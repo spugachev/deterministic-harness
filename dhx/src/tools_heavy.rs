@@ -8,9 +8,13 @@ use crate::try_run;
 use anyhow::{anyhow, Result};
 
 pub(crate) fn fuzz(cfg: &Config, target: Option<String>, runs: u32) -> Result<()> {
-    let target = target
-        .or_else(|| cfg.raw.targets.fuzz.first().cloned())
-        .ok_or_else(|| anyhow!("no fuzz target given and [targets].fuzz is empty"))?;
+    // Optional gate: no target given and none configured ⇒ the project has
+    // nothing to fuzz. Skip cleanly (a project with raw-input parsers opts in
+    // via [targets].fuzz); never hard-fail an otherwise-green tier.
+    let Some(target) = target.or_else(|| cfg.raw.targets.fuzz.first().cloned()) else {
+        println!("fuzz: [targets].fuzz is empty (skip — no fuzz targets in this project)");
+        return Ok(());
+    };
     // Fuzzing is a DISCOVERY gate, not a verification gate: it must use fresh
     // entropy each run (libFuzzer's default random seed) so that across many
     // runs it actually explores new inputs and finds real bugs. We do NOT pin
@@ -33,20 +37,24 @@ pub(crate) fn fuzz(cfg: &Config, target: Option<String>, runs: u32) -> Result<()
     Ok(())
 }
 
-/// Resolve a required single-crate `[targets]` role, erroring if unset.
-fn target_crate<'a>(role: &str, val: Option<&'a String>) -> Result<&'a str> {
+/// Resolve an optional single-crate `[targets]` role. `None` ⇒ the gate has no
+/// crate to run on; the caller skips cleanly (these targets default to the core
+/// in a scaffold, but a project may legitimately have nothing for a given one).
+fn target_crate<'a>(role: &str, val: Option<&'a String>) -> Option<&'a str> {
+    if val.is_none() {
+        println!("{role}: [targets].{role} not configured (skip)");
+    }
     val.map(String::as_str)
-        .ok_or_else(|| anyhow!("[targets].{role} is required for the `{role}` gate but is unset"))
 }
 
 pub(crate) fn miri(cfg: &Config) -> Result<()> {
     // `-Zmiri-disable-isolation` lets proptest read the clock / cwd it needs;
-    // Miri still checks `todo-core` for UB. Tokio-runtime tests in the crate
-    // are `#[cfg_attr(miri, ignore)]` (kqueue is unsupported under Miri).
-    // Pinned nightly (nightly-version.txt): Miri's UB model evolves, so a
-    // floating nightly would make this UB gate non-deterministic across days.
+    // Miri checks the target crate for UB. Pinned nightly: Miri's UB model
+    // evolves, so a floating nightly would make this UB gate non-deterministic.
+    let Some(krate) = target_crate("miri", cfg.raw.targets.miri.as_ref()) else {
+        return Ok(());
+    };
     let nightly = pinned_nightly(cfg)?;
-    let krate = target_crate("miri", cfg.raw.targets.miri.as_ref())?;
     let mut c = at_root(cfg, "cargo");
     c.args([&format!("+{nightly}"), "miri", "test", "-p", krate]);
     c.env("MIRIFLAGS", "-Zmiri-disable-isolation");
@@ -68,9 +76,11 @@ pub(crate) fn tsan(cfg: &Config) -> Result<()> {
     // Pinned nightly (nightly-version.txt): the `-Zsanitizer=thread` ABI and
     // build-std behaviour evolve, so a floating nightly would make this race
     // gate non-deterministic across days.
+    let Some(krate) = target_crate("tsan", cfg.raw.targets.tsan.as_ref()) else {
+        return Ok(());
+    };
     let nightly = pinned_nightly(cfg)?;
     let triple = host_triple();
-    let krate = target_crate("tsan", cfg.raw.targets.tsan.as_ref())?;
     let mut c = at_root(cfg, "cargo");
     c.args([
         &format!("+{nightly}"),
@@ -93,7 +103,9 @@ pub(crate) fn tsan(cfg: &Config) -> Result<()> {
 }
 
 pub(crate) fn loom_run(cfg: &Config) -> Result<()> {
-    let krate = target_crate("loom", cfg.raw.targets.loom.as_ref())?;
+    let Some(krate) = target_crate("loom", cfg.raw.targets.loom.as_ref()) else {
+        return Ok(());
+    };
     let mut c = at_root(cfg, "cargo");
     c.args(["test", "-p", krate, "--release"]);
     c.env("RUSTFLAGS", "--cfg loom");
@@ -111,12 +123,15 @@ pub(crate) fn dst(cfg: &Config, seed: u64, iterations: u64) -> Result<()> {
 /// fresh entropy seed and print it for replay — the *discovery* mode. Numeric
 /// seeds are the reproducible *regression* mode.
 pub(crate) fn dst_seeded(cfg: &Config, seed: &str, iterations: u64) -> Result<()> {
-    let dst = cfg
-        .raw
-        .targets
-        .dst
-        .as_ref()
-        .ok_or_else(|| anyhow!("[targets].dst is required for the `dst` gate but is unset"))?;
+    // Optional gate: no [targets].dst ⇒ the project has no simulation harness
+    // yet. Skip cleanly (a service with multi-step/network behaviour opts in by
+    // adding a DST integration test and naming it here); never hard-fail a tier.
+    let Some(dst) = cfg.raw.targets.dst.as_ref() else {
+        println!(
+            "dst: [targets].dst not configured (skip — no simulation harness in this project)"
+        );
+        return Ok(());
+    };
     let mut c = at_root(cfg, "cargo");
     c.args([
         "test",

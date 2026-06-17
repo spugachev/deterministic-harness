@@ -4,6 +4,9 @@
 disallowed-methods = [
     { path = "std::time::SystemTime::now", reason = "use a Clock port" },
     { path = "std::time::Instant::now", reason = "use a Clock port" },
-    { path = "rand::thread_rng", reason = "use an Rng port seeded for determinism" },
+    # When you add the `rand` crate, also ban its ambient RNG — route through an
+    # Rng port seeded for determinism. (Left out until then: clippy warns on a
+    # disallowed path from a crate that isn't a dependency.)
+    # { path = "rand::rng", reason = "use an Rng port seeded for determinism" },
 ]
 cognitive-complexity-threshold = 15

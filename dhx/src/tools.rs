@@ -216,13 +216,14 @@ pub(crate) fn verus(cfg: &Config) -> Result<()> {
 }
 
 pub(crate) fn deny(cfg: &Config) -> Result<()> {
+    // `--config` is a flag of the `check` SUBCOMMAND, not the top level — at the
+    // top level `-c` means `--color`. So `check` comes first, then `--config`.
     let mut c = at_root(cfg, "cargo");
-    c.args(["deny"]);
+    c.args(["deny", "check"]);
     let deny_cfg = cfg.path(&cfg.raw.configs.deny);
     if deny_cfg.exists() {
-        c.arg("-c").arg(&deny_cfg);
+        c.arg("--config").arg(&deny_cfg);
     }
-    c.arg("check");
     if !try_run("cargo deny check", &mut c) {
         return Err(anyhow!("cargo-deny not installed or violations found"));
     }
