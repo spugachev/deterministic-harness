@@ -21,7 +21,7 @@ pub(crate) fn validate(cfg: &Config) -> Result<()> {
     if v != SCHEMA_VERSION {
         bail!(
             "harness.toml schema_version = {v} but this dhx speaks {SCHEMA_VERSION} — run \
-             `dhx migrate` (or align your dhx version; see .harness/pins/dhx.txt)"
+             `dhx migrate`, or rebuild the dhx:latest image from a matching checkout"
         );
     }
     if cfg.raw.project.name.trim().is_empty() {

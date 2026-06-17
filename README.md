@@ -36,21 +36,24 @@ docker run --rm -v "$PWD":/work -w /work dhx:latest dhx verify --full   # + TLA+
 (A one-line shell alias — `dhx() { docker run --rm -v "$PWD":/work -w /work
 dhx:latest dhx "$@"; }` — makes this read like a local `dhx …` command.)
 
-`dhx init` writes a workspace with an IO-free core, the Clock/Rng/IdGen ports,
-`spec/` (requirements, ADRs, TLA+), `.harness/` (version pins, tool configs, git
+`dhx init` writes a workspace with an IO-free core, the Clock/Rng/IdGen ports, a
+mandatory BDD+EARS scenario per requirement, `spec/` (requirements, ADRs, and
+TLA+ once you add a state machine), `.harness/` (version pins, tool configs, git
 hooks), a `clippy.toml` of determinism bans, and `CLAUDE.md` + `.claude/` (skills
 `/check` `/verify`, a post-edit hook) so an agent is wired in from the first
-commit. It needs no Dockerfile of its own — the shared `dhx:latest` image runs
+commit. It ships a throwaway `domain::example` (REQ-001) as a green seed to
+replace, and needs no Dockerfile of its own — the shared `dhx:latest` image runs
 its gates.
 
-The three tiers (each `dhx <cmd>` below means the `docker run … dhx:latest dhx
+The tiers are split by **wall-clock cost**, so the fast verifiers run constantly
+and only the slow ones wait (each `dhx <cmd>` is the `docker run … dhx:latest dhx
 <cmd>` invocation above):
 
-| Tier      | Command              | When             | Cost                                                  |
-| --------- | -------------------- | ---------------- | ----------------------------------------------------- |
-| Preflight | `dhx check`          | after every edit | seconds — 11 cheap gates, all failures aggregated     |
-| Quick     | `dhx verify --quick` | before push      | + test, coverage, Kani, DST                           |
-| Full      | `dhx verify --full`  | before release   | + TLA+, Miri, TSAN, Loom, fuzz, mutants               |
+| Tier      | Command              | When                  | Adds                                                      |
+| --------- | -------------------- | --------------------- | --------------------------------------------------------- |
+| Preflight | `dhx check`          | every save (~s)       | fmt, clippy, all meta-gates (incl. BDD coverage)          |
+| Quick     | `dhx verify --quick` | after a small change  | + tests, proptest, coverage, Kani, **TLA+/TLC**, 1 DST seed |
+| Full      | `dhx verify --full`  | after a big change    | + Miri, TSAN, mutants, fuzz, Loom, multi-seed DST         |
 
 `dhx config explain <gate>` shows any gate's resolved value and where it came
 from.
@@ -225,7 +228,7 @@ raw capability.
 
 | Tool                                                                                                   | Tier  | Catches                                                      | How it helps                                                                      | ★     |
 | ------------------------------------------------------------------------------------------------------ | ----- | ------------------------------------------------------------ | --------------------------------------------------------------------------------- | ----- |
-| [**TLA+ / TLC**](https://github.com/tlaplus/tlaplus)                                                   | full  | spec-level concurrency / protocol errors; vacuous invariants | model-checks the protocol's reachable states; the spec is generated from the code | ★★★☆☆ |
+| [**TLA+ / TLC**](https://github.com/tlaplus/tlaplus)                                                   | quick | spec-level concurrency / protocol errors; vacuous invariants | model-checks the protocol's reachable states; for an FSM the spec is generated from the code | ★★★☆☆ |
 | [**DST**](https://github.com/tokio-rs/turmoil) (turmoil)                                               | quick | full-stack multi-step / network / fault-injection sequences  | drives the real app over a simulated network; replays any failure from a seed     | ★★★★☆ |
 | [**Loom**](https://github.com/tokio-rs/loom)                                                           | full  | in-memory data races / lost updates                          | exhausts every thread interleaving of a shared-memory pattern                     | ★★★★☆ |
 | [**TSAN**](https://doc.rust-lang.org/beta/unstable-book/compiler-flags/sanitizer.html#threadsanitizer) | full  | real-thread data races (UB)                                  | the one axis Loom can't model — the production threading stack                    | ★★★☆☆ |

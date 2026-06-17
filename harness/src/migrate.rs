@@ -24,7 +24,7 @@ pub(crate) fn run(cfg: &Config) -> Result<()> {
 /// bumping + flagging an image rebuild; v1 reports so a human can edit + rebuild.)
 pub(crate) fn pins_update(cfg: &Config) -> Result<()> {
     println!("Pinned tool versions (edit the files in .harness/pins/, then rebuild the image):");
-    for name in ["nightly", "tla2tools", "dhx"] {
+    for name in ["nightly", "tla2tools"] {
         let path = cfg.path(&format!(".harness/pins/{name}.txt"));
         let val = std::fs::read_to_string(&path)
             .map_or_else(|_| "(absent)".to_owned(), |s| s.trim().to_owned());

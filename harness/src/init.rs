@@ -15,10 +15,6 @@ use include_dir::{include_dir, Dir};
 /// The scaffold, embedded at compile time from inside the crate dir.
 static SCAFFOLD: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/assets/scaffold");
 
-/// This dhx's own version — stamped into the new project's `dhx` pin (C7) so the
-/// host and the container install the same dhx.
-const DHX_VERSION: &str = env!("CARGO_PKG_VERSION");
-
 pub(crate) fn run(path: &str, name: Option<&str>, force: bool) -> Result<()> {
     let target = expand(path);
     let project = name
@@ -100,9 +96,7 @@ fn materialize(dir: &Dir<'_>, dest_root: &Path, project: &str) -> Result<()> {
         }
         let bytes = file.contents();
         if let Ok(text) = std::str::from_utf8(bytes) {
-            let rendered = text
-                .replace("{{project}}", project)
-                .replace("{{dhx_version}}", DHX_VERSION);
+            let rendered = text.replace("{{project}}", project);
             std::fs::write(&out, rendered).with_context(|| format!("write {}", out.display()))?;
         } else {
             std::fs::write(&out, bytes).with_context(|| format!("write {}", out.display()))?;
