@@ -86,6 +86,14 @@ pub(crate) fn run(path: &str, name: Option<&str>, force: bool) -> Result<()> {
     Ok(())
 }
 
+/// Materialize the embedded scaffold into `dest` (rename + substitute only — no
+/// git/cargo/regen). Test-only seam so dhx can self-verify that its shipped
+/// scaffold is structurally valid (C-EX) without the full `init` ceremony.
+#[cfg(test)]
+pub(crate) fn materialize_to(dest: &Path, project: &str) -> Result<()> {
+    materialize(&SCAFFOLD, dest, project)
+}
+
 /// Recursively write an embedded dir, renaming inert names and substituting.
 fn materialize(dir: &Dir<'_>, dest_root: &Path, project: &str) -> Result<()> {
     for file in dir.files() {

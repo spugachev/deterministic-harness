@@ -1,7 +1,7 @@
 # CLAUDE.md — conventions for developing `dhx` itself
 
 This repo is the **Deterministic Harness** system. `dhx` (in `dhx/`) is the CLI
-that scaffolds + verifies *other* projects; `dhx/assets/scaffold/` is the
+that scaffolds + verifies _other_ projects; `dhx/assets/scaffold/` is the
 embedded template it writes. This file governs working on **dhx itself** — it is
 NOT the file a scaffolded project gets (that is
 `dhx/assets/scaffold/CLAUDE.md.template`). Read [docs/](docs/) for the design.
@@ -18,10 +18,17 @@ NOT the file a scaffolded project gets (that is
      others. If a file would exceed it, split it (e.g. `tools.rs` →
      `tools_heavy.rs`, `main.rs` → `proc.rs`, `config.rs` → `config_explain.rs`,
      `fsm.rs` → `fsm_render.rs`). This is non-negotiable.
-   An unverified verifier is the ultimate toothless gate.
+     An unverified verifier is the ultimate toothless gate.
 3. **Only verification techniques are gates.** Persistence/HTTP/app concerns
    (sqlx, an OpenAPI contract test, …) are NOT harness gates and do not belong in
-   `dhx`. The harness requires the *ports architecture*, not any specific library.
+   `dhx`. The harness requires the _ports architecture_, not any specific library.
+
+> **Note — dhx is the tool, not a scaffolded service.** dhx has no
+> `harness.toml`, no `Dockerfile`, no FSM/ports of its own: those belong to the
+> _projects dhx scaffolds_. `render-dockerfile` / `dhx verify --full` are
+> exercised inside a scaffolded project (and by the `shipped_scaffold_*` self-
+> tests that materialize the embedded scaffold and validate it), not against
+> this repo. dhx's own CI-equivalent is the self-verify subset in invariant 2.
 
 ## Lint discipline
 
@@ -86,9 +93,3 @@ dhx init /tmp/probe && cd /tmp/probe && dhx check # scaffold → 11 gates green
 
 If you change `assets/scaffold/`, always re-run `cargo install --path dhx
 --force` before testing `dhx init` — the assets are embedded at build time.
-
-## Git workflow
-
-Conventional-commit prefixes (`feat`/`fix`/`test`/`refactor`/`docs`/`chore`/…).
-Work on `main`. **Never** `git --no-verify`. Do not bypass Code Defender or any
-publication control; external pushes go through the sanctioned approval path.

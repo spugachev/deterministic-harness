@@ -34,6 +34,7 @@ use clap::{Parser, Subcommand};
 mod config;
 use config::Config;
 mod config_explain;
+mod config_validate;
 mod proc;
 pub(crate) use proc::{run, try_run};
 mod corpus;

@@ -12,7 +12,7 @@
 
 use std::path::{Path, PathBuf};
 
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{anyhow, Context, Result};
 use serde::Deserialize;
 
 /// The schema version this build of `dhx` understands. A `harness.toml` with a
@@ -281,55 +281,7 @@ impl Config {
     }
 
     fn validate(&self) -> Result<()> {
-        // C6 — schema gate with an actionable message.
-        let v = self.raw.meta.schema_version;
-        if v == 0 {
-            bail!(
-                "harness.toml is missing [meta].schema_version — add `schema_version = {SCHEMA_VERSION}` \
-                 under a [meta] table (this build of dhx speaks schema {SCHEMA_VERSION})"
-            );
-        }
-        if v != SCHEMA_VERSION {
-            bail!(
-                "harness.toml schema_version = {v} but this dhx speaks {SCHEMA_VERSION} — run \
-                 `dhx migrate` (or align your dhx version; see .harness/pins/dhx.txt)"
-            );
-        }
-        if self.raw.project.name.trim().is_empty() {
-            bail!("harness.toml [project].name is required and must be non-empty");
-        }
-        if self.raw.coverage.core.is_empty() {
-            bail!(
-                "harness.toml [coverage].core is required — list the verified-core crate(s) held \
-                 to the high coverage bar"
-            );
-        }
-        // R2/C2 — presence ⇒ mandatory, keyed off SOURCE on disk, never off the
-        // config section being policed.
-        self.validate_fsm_shape()?;
-        Ok(())
-    }
-
-    /// If the project looks FSM-shaped on disk but isn't configured, fail loudly
-    /// instead of silently skipping the FSM/spec-sync gates (R2/C2). The trigger
-    /// is the conventional FSM source path existing — a *source* artifact, never
-    /// the generated `.tla` (which may not exist before first `regen`).
-    fn validate_fsm_shape(&self) -> Result<()> {
-        if self.raw.fsm.is_some() {
-            return Ok(());
-        }
-        // Heuristic shape probe, independent of [fsm]: a state.rs with a
-        // `fn next` under any crate's domain dir is the deterministic-harness
-        // FSM convention.
-        let conventional = self.root.join("crates/core/src/domain/state.rs");
-        if conventional.exists() {
-            bail!(
-                "FSM source {} exists but harness.toml has no [fsm] section — configure it \
-                 (regen/check-spec-sync would otherwise silently verify nothing)",
-                conventional.display()
-            );
-        }
-        Ok(())
+        crate::config_validate::validate(self)
     }
 
     /// Workspace member crate names, from `cargo metadata` (cached by cargo

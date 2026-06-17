@@ -9,6 +9,7 @@
 )]
 
 use crate::bdd_gates::salient_tokens;
+use crate::config::Config;
 use crate::fsm::Transition;
 use crate::fsm_sync::canonical_fsm;
 use crate::tlc::MutationTable;
@@ -153,4 +154,67 @@ fn mutation_table_parses_and_is_well_formed() {
             e.name
         );
     }
+}
+
+// --- scaffold integrity (C-EX): the SHIPPED scaffold must load + validate -----
+// dhx materializes its own embedded scaffold to a temp dir and asserts the
+// shipped harness.toml is structurally valid (schema, required fields, FSM
+// shape, crate-name cross-check against the shipped Cargo.toml). A broken
+// scaffold therefore fails dhx's build, not just a manual `dhx init`.
+
+fn unique_tmp(tag: &str) -> std::path::PathBuf {
+    use std::sync::atomic::{AtomicU32, Ordering};
+    static N: AtomicU32 = AtomicU32::new(0);
+    let pid = std::process::id();
+    let n = N.fetch_add(1, Ordering::Relaxed);
+    std::env::temp_dir().join(format!("dhx-scaffold-test-{tag}-{pid}-{n}"))
+}
+
+#[test]
+fn shipped_scaffold_loads_and_validates() {
+    let dir = unique_tmp("ok");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    crate::init::materialize_to(&dir, "probe").expect("materialize embedded scaffold");
+
+    // The renamed harness.toml must exist (proves dot/.tmpl rename + substitution).
+    assert!(
+        dir.join("harness.toml").is_file(),
+        "harness.toml materialized"
+    );
+    assert!(
+        dir.join(".harness/pins/nightly.txt").is_file(),
+        "dotfiles renamed"
+    );
+    assert!(
+        dir.join("crates/core/Cargo.toml").is_file(),
+        "manifest un-tmpl'd"
+    );
+
+    // Config::load_from runs the full validate() — schema, required fields, FSM
+    // presence-mandatory, AND the C14 crate-name cross-check against metadata.
+    Config::load_from(&dir).expect("shipped scaffold harness.toml is valid");
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn coverage_typo_is_a_load_error() {
+    // C14 teeth: a non-existent crate in [coverage].core fails at load.
+    let dir = unique_tmp("typo");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    crate::init::materialize_to(&dir, "probe").unwrap();
+    let manifest = dir.join("harness.toml");
+    let bad = std::fs::read_to_string(&manifest)
+        .unwrap()
+        .replace("core = [\"core\"]", "core = [\"c0re\"]");
+    std::fs::write(&manifest, bad).unwrap();
+
+    let err = Config::load_from(&dir).expect_err("typo'd core crate must fail load");
+    assert!(
+        err.to_string().contains("c0re") && err.to_string().contains("not a workspace member"),
+        "error should name the typo: {err}"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
 }
