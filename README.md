@@ -1,8 +1,21 @@
 # Deterministic Harness (`dhx`)
 
-> An opinionated scaffolder that creates a new Rust service already wired into a
-> comprehensive verification toolchain, and one CLI that runs every gate
-> locally. There is no CI — the gates *are* the gate.
+Code is cheap to write now and expensive to trust. The bottleneck has moved from
+*writing* to *verifying* — and "it compiles and the tests pass" was never the
+same thing as "it is correct."
+
+`dhx` is the answer that bets on the harness, not the model: it scaffolds a new
+Rust service whose architecture is built so that a deep stack of verifiers —
+type checking, property tests, model checking, bounded and deductive proofs,
+simulation, race detectors — can each have *teeth*, and one CLI runs them
+locally. There is no CI; the gates **are** the gate.
+
+It is a scaffolder, not a linter you point at an existing repo. The gates only
+bite because the project has a particular shape (an IO-free core behind
+Clock/Rng/IdGen ports); `dhx init` lays that shape down so the harness is
+meaningful from the first commit. The rest of this document is the argument for
+why that trade is worth making, and a tour of every tool — with the bug each one
+catches.
 
 ---
 
