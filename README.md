@@ -197,49 +197,49 @@ raw capability.
 
 | Tool | Tier | Catches | How it helps | ★ |
 |---|---|---|---|---|
-| **clippy** (4 levels + restriction) | check | antipatterns, unchecked arithmetic, lossy casts, reachable panics, complexity, direct non-determinism | refuses whole bug classes before a test even runs | ★★★★★ |
+| [**clippy**](https://doc.rust-lang.org/clippy/) (4 levels + restriction) | check | antipatterns, unchecked arithmetic, lossy casts, reachable panics, complexity, direct non-determinism | refuses whole bug classes before a test even runs | ★★★★★ |
 | **meta-gates** (traceability, spec-sync, bdd/mutation-coverage, file-size, docs-counts) | check | drift between spec, code, and docs; vacuous invariants; a gate that checks nothing | keep every other gate and the docs honest | ★★★★☆ |
 
 **Behaviour & test quality — does it do the right thing, and do the tests prove it**
 
 | Tool | Tier | Catches | How it helps | ★ |
 |---|---|---|---|---|
-| **cucumber** (BDD) | quick | implemented behaviour that diverges from its stated acceptance criteria | turns each requirement into an executable, human-readable scenario, run end-to-end against the real service | ★★★☆☆ |
-| **proptest** | quick | violation of a pure law (idempotence, monotonicity, round-trip, bounds) | finds the boundary the happy-path test forgot, then shrinks it | ★★★★★ |
-| **cargo-llvm-cov** | quick | untested regions of the verified core | the quantitative adequacy floor under the test suite | ★★★★☆ |
-| **cargo-mutants** | full | weak tests (logic inverted, tests still green) | proves the suite kills bugs, not just executes lines | ★★★★☆ |
+| [**cucumber**](https://github.com/cucumber-rs/cucumber) (BDD) | quick | implemented behaviour that diverges from its stated acceptance criteria | turns each requirement into an executable, human-readable scenario, run end-to-end against the real service | ★★★☆☆ |
+| [**proptest**](https://github.com/proptest-rs/proptest) | quick | violation of a pure law (idempotence, monotonicity, round-trip, bounds) | finds the boundary the happy-path test forgot, then shrinks it | ★★★★★ |
+| [**cargo-llvm-cov**](https://github.com/taiki-e/cargo-llvm-cov) | quick | untested regions of the verified core | the quantitative adequacy floor under the test suite | ★★★★☆ |
+| [**cargo-mutants**](https://mutants.rs/) | full | weak tests (logic inverted, tests still green) | proves the suite kills bugs, not just executes lines | ★★★★☆ |
 
 **Proofs of the pure core — exhaustive, not sampled**
 
 | Tool | Tier | Catches | How it helps | ★ |
 |---|---|---|---|---|
-| **Kani** (CBMC) | quick | arithmetic / structural invariants on bounded, total functions | proves a property over _every_ in-range input | ★★★☆☆ |
-| **Verus** (Z3) | full | unbounded ∀ / nonlinear postconditions | the deductive twin of Kani, where bounded checking can't close it | ★★☆☆☆ |
+| [**Kani**](https://github.com/model-checking/kani) (CBMC) | quick | arithmetic / structural invariants on bounded, total functions | proves a property over _every_ in-range input | ★★★☆☆ |
+| [**Verus**](https://github.com/verus-lang/verus) (Z3) | full | unbounded ∀ / nonlinear postconditions | the deductive twin of Kani, where bounded checking can't close it | ★★☆☆☆ |
 
 **Concurrency & protocol — the bugs that are about _schedules_, not inputs**
 
 | Tool | Tier | Catches | How it helps | ★ |
 |---|---|---|---|---|
-| **TLA+ / TLC** | full | spec-level concurrency / protocol errors; vacuous invariants | model-checks the protocol's reachable states; the spec is generated from the code | ★★★☆☆ |
-| **DST** (turmoil) | quick | full-stack multi-step / network / fault-injection sequences | drives the real app over a simulated network; replays any failure from a seed | ★★★★☆ |
-| **Loom** | full | in-memory data races / lost updates | exhausts every thread interleaving of a shared-memory pattern | ★★★★☆ |
-| **TSAN** | full | real-thread data races (UB) | the one axis Loom can't model — the production threading stack | ★★★☆☆ |
+| [**TLA+ / TLC**](https://github.com/tlaplus/tlaplus) | full | spec-level concurrency / protocol errors; vacuous invariants | model-checks the protocol's reachable states; the spec is generated from the code | ★★★☆☆ |
+| [**DST**](https://github.com/tokio-rs/turmoil) (turmoil) | quick | full-stack multi-step / network / fault-injection sequences | drives the real app over a simulated network; replays any failure from a seed | ★★★★☆ |
+| [**Loom**](https://github.com/tokio-rs/loom) | full | in-memory data races / lost updates | exhausts every thread interleaving of a shared-memory pattern | ★★★★☆ |
+| [**TSAN**](https://doc.rust-lang.org/beta/unstable-book/compiler-flags/sanitizer.html#threadsanitizer) | full | real-thread data races (UB) | the one axis Loom can't model — the production threading stack | ★★★☆☆ |
 
 **Memory safety & untrusted input**
 
 | Tool | Tier | Catches | How it helps | ★ |
 |---|---|---|---|---|
-| **Miri** | full | memory UB (invalid transmute, OOB, use-after-free) | interprets under a UB-detecting machine; insurance for any `unsafe` | ★★☆☆☆ |
-| **cargo-fuzz** | full | panics/crashes on arbitrary raw input | coverage-guided bytes into parsers/decoders; a crash persists as a replay | ★★★☆☆ |
-| `#![forbid(unsafe_code)]` | compile | any `unsafe` in shipped crates | a compile error, stronger than any audit | n/a |
+| [**Miri**](https://github.com/rust-lang/miri) | full | memory UB (invalid transmute, OOB, use-after-free) | interprets under a UB-detecting machine; insurance for any `unsafe` | ★★☆☆☆ |
+| [**cargo-fuzz**](https://github.com/rust-fuzz/cargo-fuzz) | full | panics/crashes on arbitrary raw input | coverage-guided bytes into parsers/decoders; a crash persists as a replay | ★★★☆☆ |
+| [`#![forbid(unsafe_code)]`](https://doc.rust-lang.org/reference/attributes/codegen.html#the-unsafe_code-attribute) | compile | any `unsafe` in shipped crates | a compile error, stronger than any audit | n/a |
 
 **Supply chain & secrets — risks compilation can't see**
 
 | Tool | Tier | Catches | How it helps | ★ |
 |---|---|---|---|---|
-| **cargo-deny** | quick | vulnerable / banned / bad-license dependencies | a supply-chain class the compiler never looks at | ★★★★☆ |
-| **gitleaks** | quick | committed secrets | catches a key before it leaves your machine | ★★★★☆ |
-| **machete / outdated / geiger** | quick/full | unused deps; stale deps; unsafe-surface trend | hygiene; `outdated`/`geiger` advise, never block | ★★ |
+| [**cargo-deny**](https://github.com/EmbarkStudios/cargo-deny) | quick | vulnerable / banned / bad-license dependencies | a supply-chain class the compiler never looks at | ★★★★☆ |
+| [**gitleaks**](https://github.com/gitleaks/gitleaks) | quick | committed secrets | catches a key before it leaves your machine | ★★★★☆ |
+| [**machete**](https://github.com/bnjbvr/cargo-machete) / [**outdated**](https://github.com/kbknapp/cargo-outdated) / [**geiger**](https://github.com/geiger-rs/cargo-geiger) | quick/full | unused deps; stale deps; unsafe-surface trend | hygiene; `outdated`/`geiger` advise, never block | ★★ |
 
 What follows is one example per tool — a snippet and the error it catches — in
 the same grouped order.
@@ -494,6 +494,37 @@ See [CLAUDE.md](CLAUDE.md) — the invariants for developing the tool (it dogfoo
 its own gates: fmt, clippy, tests, every file ≤ 400 lines), the module layout,
 and the conventions (`&Config` everywhere, one `corpus` walk, presence ⇒
 mandatory, inert embedded assets).
+
+## Further reading
+
+The "harness over model" thesis is not unique to this project; it is a
+convergence several teams reached independently. The works that most directly
+shaped the approach here:
+
+- Datadog — [_Closing the verification loop: observability-driven harnesses for
+  building with agents_](https://www.datadoghq.com/blog/ai/harness-first-agents/)
+  — the source of "the agent generates code, the harness verifies it, telemetry
+  validates it," and of the verification pyramid (TLA+ → DST → Kani → telemetry).
+- Datadog — [_Closing the verification loop, Part 2: fully autonomous
+  optimization_](https://www.datadoghq.com/blog/ai/fully-autonomous-optimization/)
+  — a verifier-gated pipeline (Verus proofs + sandbox + shadow eval) running with
+  no human in the loop.
+- AWS Builder / Suhavi Sandhu — [_No reliable autonomy without determinism:
+  building guardrails for autonomous software
+  agents_](https://builder.aws.com/content/3CuKqf5cM4vSShhg5lPErnUmlA4/no-reliable-autonomy-without-determinism-building-guardrails-for-autonomous-software-agents)
+  — determinism as the precondition for delegating to an agent.
+- Brooker & Desai — [_Systems correctness practices at Amazon Web
+  Services_](https://cacm.acm.org/practice/systems-correctness-practices-at-amazon-web-services/),
+  _CACM_ 2025 — formal methods (TLA+, [P](https://github.com/p-org/P), DST) as
+  routine engineering practice at scale.
+- Anthropic — [_Building effective
+  agents_](https://www.anthropic.com/engineering/building-effective-agents) —
+  programmatic gates between steps; "invest in the agent-computer interface."
+- TigerBeetle — [_Deterministic simulation
+  testing_](https://docs.tigerbeetle.com/concepts/safety/) — the DST lineage the
+  `turmoil`-based gate descends from.
+- Sergey Pugachev — _The Substrate Beneath the Agent_ (2026), the long-form
+  synthesis this README condenses.
 
 ## License
 
