@@ -218,3 +218,23 @@ fn coverage_typo_is_a_load_error() {
     );
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn verus_source_without_config_is_a_load_error() {
+    // R2/C2 teeth: a conventional verus_proofs.rs on disk with no [verus]
+    // section must fail loudly, not silently skip the verus gate.
+    let dir = unique_tmp("verus");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    crate::init::materialize_to(&dir, "probe").unwrap();
+    // The scaffold ships no [verus] section; plant the conventional source file.
+    let vp = dir.join("crates/core/src/verus_proofs.rs");
+    std::fs::write(&vp, "// proofs\n").unwrap();
+
+    let err = Config::load_from(&dir).expect_err("verus source without [verus] must fail load");
+    assert!(
+        err.to_string().contains("verus_proofs.rs") && err.to_string().contains("[verus]"),
+        "error should name the unconfigured Verus source: {err}"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}

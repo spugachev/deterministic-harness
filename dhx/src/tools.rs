@@ -194,8 +194,10 @@ pub(crate) fn check_kani_codegen(cfg: &Config) -> Result<()> {
 }
 
 pub(crate) fn verus(cfg: &Config) -> Result<()> {
-    // Verus presence ⇒ mandatory (R2): if [verus] is absent, this gate is
-    // SKIPPED-by-shape (printed), not silently green.
+    // [verus] absent here means the project genuinely has no Verus proofs — and
+    // `config_validate::validate_verus_shape` has already hard-failed at load if
+    // a conventional `verus_proofs.rs` exists unconfigured (presence ⇒ mandatory,
+    // R2/C2). So this skip is safe, not silent.
     let Some(verus) = cfg.raw.verus.as_ref() else {
         println!("verus: [verus] not configured (skip — no deductive proofs in this project)");
         return Ok(());

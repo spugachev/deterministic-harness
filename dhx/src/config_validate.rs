@@ -34,6 +34,7 @@ pub(crate) fn validate(cfg: &Config) -> Result<()> {
         );
     }
     validate_fsm_shape(cfg)?;
+    validate_verus_shape(cfg)?;
     validate_crate_names(cfg)?;
     Ok(())
 }
@@ -51,6 +52,24 @@ fn validate_fsm_shape(cfg: &Config) -> Result<()> {
         bail!(
             "FSM source {} exists but harness.toml has no [fsm] section — configure it \
              (regen/check-spec-sync would otherwise silently verify nothing)",
+            conventional.display()
+        );
+    }
+    Ok(())
+}
+
+/// If the project looks Verus-shaped on disk but isn't configured, fail loudly
+/// instead of silently skipping the verus gate (R2/C2). The trigger is the
+/// conventional Verus entry file existing.
+fn validate_verus_shape(cfg: &Config) -> Result<()> {
+    if cfg.raw.verus.is_some() {
+        return Ok(());
+    }
+    let conventional = cfg.root.join("crates/core/src/verus_proofs.rs");
+    if conventional.exists() {
+        bail!(
+            "Verus source {} exists but harness.toml has no [verus] section — configure it \
+             (the verus gate would otherwise silently verify nothing)",
             conventional.display()
         );
     }
