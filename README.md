@@ -63,6 +63,48 @@ my-svc/
 
 `dhx config explain <gate>` shows a gate's resolved value and where it came from.
 
+## The tools — what each does, what it catches, what it's worth
+
+Ratings are practical bug-catching ROI (graded from A/B studies + planted-defect
+probes on the prototype this harness came from), not raw capability. Full
+detail, runnable commands, and the bug-class → tool reverse lookup are in
+[docs/toolchain.md](docs/toolchain.md).
+
+| Tool | Tier | Catches | Usefulness |
+|---|---|---|---|
+| **clippy** (4 levels + restriction) | check | antipatterns, unchecked arithmetic, lossy casts, reachable panics, complexity, direct non-determinism | ★★★★★ best ROI; the always-on floor |
+| **proptest** | quick | violations of a pure law (idempotence/monotonicity/round-trip/bounds) | ★★★★★ broad, cheap workhorse |
+| **meta-gates** (traceability, spec-sync, bdd, mutation-coverage, file-size, docs-counts) | check | spec ↔ code ↔ docs drift; vacuous invariants; the *toothless gate* itself | ★★★★☆ cheap, keeps everything else honest |
+| **DST** (turmoil) | quick | full-stack multi-step / network / fault-injection sequences | ★★★★☆ unique for sequences; replayable |
+| **cargo-mutants** | full | weak tests (logic-inverted-still-passes) | ★★★★☆ unique; proves test adequacy |
+| **Loom** | full | in-memory races / lost updates (schedules, not inputs) | ★★★★☆ narrow but unique |
+| **cargo-deny** | quick | vulnerable / banned / bad-license deps | ★★★★☆ a class compilation can't see |
+| **cargo-llvm-cov** | quick | untested regions of the verified core | ★★★★☆ adequacy floor |
+| **gitleaks** | quick | committed secrets | ★★★★☆ (toothless without `useDefault`) |
+| **Kani** | quick | bounded arithmetic/structural invariants (∀ in-range) | ★★★☆☆ high value, some operational care |
+| **TLA+/TLC** | full | spec-level concurrency / protocol errors | ★★★☆☆ only when concurrent — then unique |
+| **TSAN** | full | real-thread data races (UB) | ★★★☆☆ insurance until shared state appears |
+| **cargo-fuzz** | full | raw-input panics (parsers/decoders) | ★★★☆☆ high on untrusted input, low elsewhere |
+| **cucumber** (BDD) | quick | HTTP-/externally-observable behaviour | ★★★☆☆ readability + traceability anchor |
+| **Miri** | full | memory UB (transmute/OOB/UAF) | ★★☆☆☆ insurance while `forbid(unsafe)` holds |
+| **Verus** | full | unbounded ∀ / nonlinear postconditions | ★★☆☆☆ deductive contrast to Kani |
+| **cargo-machete / outdated / geiger** | quick/full | unused deps; stale deps; unsafe-surface trend | ★★–★★★ hygiene; outdated/geiger never block |
+
+The guiding rule is **one tool per bug class** and **route, don't spray**: a
+cheap always-on floor plus heavy instruments aimed where the feature's hardest
+question lands. The decisive finding: *payoff tracks a feature's bug-surface,
+not effort.*
+
+## Documentation
+
+A coherent manual lives in [docs/](docs/):
+
+- [docs/philosophy.md](docs/philosophy.md) — oracle trust vs compiler trust, why determinism, gates with teeth.
+- [docs/architecture.md](docs/architecture.md) — the ports/FSM/layout shape that makes the gates meaningful.
+- [docs/workflow.md](docs/workflow.md) — the spec-first methodology, routing rubric, tiers, and hard rules.
+- [docs/toolchain.md](docs/toolchain.md) — every tool, one by one, with usefulness ratings.
+- [docs/configuration.md](docs/configuration.md) — the `harness.toml` reference.
+
 ## Design principles (hard-won)
 
 - **No silently-toothless gate.** If a project *looks* FSM-shaped (the source
@@ -75,5 +117,5 @@ my-svc/
   (fmt/clippy/test/file-size≤400/deny/machete) — an unverified verifier would be
   the ultimate toothless gate.
 
-See `docs/TOOLCHAIN.md` in a scaffolded project (and the design history) for the
-per-tool detail.
+See [docs/](docs/) for the full manual and [docs/toolchain.md](docs/toolchain.md)
+for per-tool detail.
