@@ -61,9 +61,15 @@ pub(crate) fn tlc(cfg: &Config, required: bool) -> Result<()> {
     let Some(jar) = resolve_tlc_jar(cfg, required)? else {
         return Ok(());
     };
-    for spec in &all {
+    for (i, spec) in all.iter().enumerate() {
         let stem = spec.with_extension("");
         let cfg_path = spec.with_extension("cfg");
+        // TLC writes a per-run `states/` metadir for its disk queue. By default
+        // that lands next to the spec — but in the `--full` container /work is
+        // mounted read-only (C1), so redirect it to a writable temp dir with
+        // `-metadir`. Per-spec subdir so concurrent specs never collide.
+        let metadir = std::env::temp_dir().join(format!("dhx-tlc-{i}"));
+        let _ = std::fs::remove_dir_all(&metadir);
         let mut c = Command::new("java");
         c.current_dir(&cfg.root);
         c.args([
@@ -73,6 +79,8 @@ pub(crate) fn tlc(cfg: &Config, required: bool) -> Result<()> {
             "-deadlock",
             "-workers",
             "auto",
+            "-metadir",
+            &metadir.to_string_lossy(),
             "-config",
             &cfg_path.to_string_lossy(),
             &spec.to_string_lossy(),

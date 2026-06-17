@@ -122,6 +122,12 @@ pub(crate) fn mutants(cfg: &Config, shard: Option<String>, baseline: Option<Stri
     if mutants_cfg.exists() {
         c.arg("--config").arg(&mutants_cfg);
     }
+    // In the `--full` container the source is mounted read-only (C1), so the
+    // default `mutants.out` under the tree can't be created. Redirect the report
+    // to a writable path; the build copies already go to $TMPDIR.
+    if crate::docker::in_container() {
+        c.arg("--output").arg("/tmp/mutants");
+    }
     if let Some(s) = shard {
         c.arg("--shard").arg(s);
     }
@@ -272,15 +278,21 @@ pub(crate) fn geiger(cfg: &Config) -> Result<()> {
 }
 
 pub(crate) fn gitleaks(cfg: &Config) -> Result<()> {
-    // gitleaks >= 8.19 renamed `detect` to `git`. Scan tracked git history
-    // (not the working tree / target dir) against the configured allowlist.
+    // gitleaks >= 8.19 renamed `detect` to `git`. Prefer scanning tracked git
+    // history (catches secrets that were committed then deleted); but the
+    // container mounts the source read-only at /work, which may not be a git
+    // repo on its own (a subdir of a monorepo, or a CI checkout). When there's
+    // no repo at the root, fall back to a directory scan so the gate still has
+    // teeth — it ALWAYS scans, never silently skips (the toothless-gate trap).
+    let is_repo = cfg.root.join(".git").exists();
+    let mode = if is_repo { "git" } else { "dir" };
     let mut c = at_root(cfg, "gitleaks");
-    c.args(["git", "--no-banner"]);
+    c.args([mode, "--no-banner"]);
     let gl_cfg = cfg.path(&cfg.raw.configs.gitleaks);
     if gl_cfg.exists() {
         c.arg("-c").arg(&gl_cfg);
     }
-    if !try_run("gitleaks git", &mut c) {
+    if !try_run(&format!("gitleaks {mode}"), &mut c) {
         return Err(anyhow!("gitleaks not installed or secrets found"));
     }
     Ok(())

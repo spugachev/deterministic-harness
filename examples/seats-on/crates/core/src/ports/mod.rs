@@ -76,4 +76,30 @@ mod tests {
         assert_eq!(a.next_u64(), b.next_u64());
         assert_eq!(a.next_id(), b.next_id());
     }
+
+    #[test]
+    fn seqgen_rng_matches_splitmix64_golden() {
+        // Pin the ACTUAL bit-mixing, not just self-agreement: a self-comparison
+        // mutates both copies identically and stays green, so the constants and
+        // the `^`/`>>` ops would be untested. These golden values nail them.
+        let mut a = SeqGen(42);
+        assert_eq!(a.next_u64(), 13_679_457_532_755_275_413);
+        assert_eq!(a.next_u64(), 2_949_826_092_126_892_291);
+        // A different seed yields a different stream (rules out seed-independent
+        // mutants like `-> u64 with 0`).
+        let mut z = SeqGen(0);
+        assert_eq!(z.next_u64(), 16_294_208_416_658_607_535);
+    }
+
+    #[test]
+    fn seqgen_idgen_counts_up_from_seed() {
+        // Pins next_id's exact sequence (kills the `-> 0` / `-> 1` constant
+        // mutants and the `+ 1` step).
+        let mut g = SeqGen(0);
+        assert_eq!(g.next_id(), 1);
+        assert_eq!(g.next_id(), 2);
+        assert_eq!(g.next_id(), 3);
+        let mut h = SeqGen(100);
+        assert_eq!(h.next_id(), 101);
+    }
 }
