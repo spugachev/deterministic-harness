@@ -1,0 +1,4 @@
+#!/bin/sh
+# Enforce a conventional-commit prefix.
+head -1 "$1" | grep -Eq '^(feat|fix|test|refactor|perf|docs|build|chore|process|style|revert)(\([^)]+\))?: ' || {
+  echo "commit aborted: message must start with a conventional-commit prefix (feat|fix|test|...)"; exit 1; }

@@ -1,0 +1,16 @@
+# Anti-vacuity table for the TLA+ invariants (R5/C2). Each `.cfg` INVARIANT must
+# be either broken by a [[mutations]] entry (TLC must catch the mutation) or
+# justified in [[exempt]] — so an invariant can never silently ship vacuous.
+# `find`/`replace` are textual patches into the spec; keep them in sync.
+
+[[mutations]]
+spec = "Lifecycle"
+label = "cancelled is not terminal"
+find = "(state = \"Cancelled\" => ~ ENABLED Next)"
+replace = "(state = \"Cancelled\" => ENABLED Next)"
+expect = "ArchivedTerminal"
+
+[[exempt]]
+spec = "Lifecycle"
+name = "TypeInvariant"
+reason = "structural well-typedness catch-all; the substantive claim is ArchivedTerminal (cancelled is terminal), which IS mutated"
