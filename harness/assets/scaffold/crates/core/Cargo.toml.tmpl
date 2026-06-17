@@ -13,6 +13,17 @@ license.workspace      = true
 
 [dev-dependencies]
 proptest = "1"
+# BDD is the mandatory floor: every REQ has a Gherkin scenario (EARS-shaped),
+# run by cucumber. These are TEST-ONLY deps — the shipped core stays IO-free.
+cucumber = "0.21"
+tokio    = { version = "1", features = ["macros", "rt-multi-thread"] }
+
+# The cucumber suite — `cargo test -p core --test bdd`. `harness = false` because
+# cucumber prints its own report. The .feature files live in the centralized
+# `spec/features/` (the BDD spec sits with the other specs, not buried in tests).
+[[test]]
+name    = "bdd"
+harness = false
 
 [lints]
 workspace = true

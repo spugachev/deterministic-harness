@@ -10,8 +10,11 @@ All non-determinism flows through **ports** (`crates/core/src/ports/`:
 Clock/Rng/IdGen). Domain/application code must NEVER call `SystemTime::now`,
 `Instant::now`, or a thread RNG directly — `clippy.toml` bans them. This
 discipline is what makes the concurrency/DST gates meaningful and the domain
-reproducible. The **verified core** (`crates/core`) is IO-free so Kani/proptest can prove its functions total. Add HTTP/DB adapters in OUTER crates
-behind the ports — never in the core.
+reproducible. The **verified core** (`crates/core`) is IO-free so Kani/proptest
+can prove its functions total. Add any IO — HTTP, DB, files, sockets — in OUTER
+crates behind the ports, never in the core. This shape is independent of what
+the project *does*; the shipped `domain::example` is only a green starter seed
+to delete and replace with your domain.
 
 ## Layout
 
@@ -22,46 +25,63 @@ spec/                 requirements/ (REQ-NNN), adr/, tla/ (+ mutations.toml)
 crates/core/          the IO-free verified core: domain/ (the FSM), ports/
 ```
 
-## The methodology — spec-first, then route to the right tool
+## The methodology — spec-first, from specification to code to simulation
 
-This project is **NOT test-first TDD**. The order is: pin the *intent* in a
-spec, write the code, then write the checks that prove it — and adequacy is
-enforced by mutation testing + coverage, not by test-ordering. For a new
-feature, work the phases **in this order**:
+This works for **any** kind of project (CLI, library, service, protocol) — the
+scaffold ships a tiny `domain::example` (REQ-001) only as a green starting seed;
+delete it and add your domain. The order is **spec → code → simulation**, NOT
+test-first TDD:
+pin the *intent* in a spec, derive the code from it, then prove it. Adequacy is
+enforced by mutation testing + coverage, not by test-ordering.
+
+**The mandatory floor — these run on EVERY feature, no exceptions:**
+
+- **BDD + EARS (cucumber).** Every `REQ-NNN` gets at least one Gherkin scenario
+  tagged with its id, phrased in EARS form (Given a state / When an event /
+  Then the system shall …). `check-bdd-coverage` FAILS a REQ that has no
+  scenario — there is no opt-out. Scenarios drive the domain directly (the core
+  is IO-free, as the shipped `crates/core/tests/bdd.rs` shows); they do not need
+  HTTP. A `(verified=…)` marker can satisfy *token-matching* for a criterion
+  that is not externally observable, but it never replaces the scenario.
+- **clippy** (4 levels + restriction) and **property tests (proptest)** for the
+  pure laws of the feature (totality, idempotence, monotonicity, round-trip,
+  bounds). These are the broad, cheap workhorses you always write.
+
+**Per feature, work the phases in this order:**
 
 1. **REQ first.** Write `spec/requirements/REQ-NNN.md` with EARS acceptance
-   criteria. Each criterion later needs a covering check (a BDD scenario or a
-   `(verified=kani|tla|proptest|dst)` marker) — `check-bdd-coverage` +
-   `check-verified-markers` enforce this.
-2. **TLA+ next — but only if the feature is concurrent / a protocol / has
-   interleavings.** Model it in `spec/tla/*.tla`, run `dhx tlc`. For the
-   lifecycle FSM you do NOT hand-write TLA+: it is *generated* from
-   `state.rs::next` by `dhx regen` (edit the Rust, regen, commit). Every TLA+
-   invariant needs an anti-vacuity entry in `spec/tla/mutations.toml`
-   (`check-mutation-coverage` enforces it — an invariant can never ship vacuous).
-3. **BDD** for any HTTP-/externally-observable behaviour: a Gherkin scenario in
-   EARS form per acceptance criterion (`dhx check-bdd-style` / `-coverage`).
-4. **Implement** in `crates/core` (pure); put IO in an outer crate behind a port.
-5. **Unit tests + coverage.** `dhx cov` holds the verified core at the
-   `[coverage].core` bar (default 90% lines/functions). `dhx mutants` then
-   proves those tests actually *kill* logic mutations — a test that passes with
-   the logic inverted is a weak test and fails the gate.
-6. **Kani** (bounded proof) for a pure, total, bounded function with an
-   arithmetic/structural invariant.
-7. **proptest** for any pure *law* (idempotence, monotonicity, round-trip,
-   bounds) — the broad, cheap workhorse.
-8. **DST / Loom / TSAN / fuzz** as the feature demands: multi-step/network → DST;
-   in-memory races → Loom; real-thread races → TSAN; parsers/`&[u8]` → fuzz.
+   criteria. (`check-traceability` ties it to the code/spec that implements it.)
+2. **Specify before coding — TLA+ and/or BDD:**
+   - **BDD always** — write the EARS Gherkin scenarios for the REQ now; they are
+     the executable acceptance spec you code against.
+   - **TLA+ when the feature is concurrent / a protocol / has interleavings** —
+     model it in `spec/tla/*.tla`, run `dhx tlc`. If the feature is a state
+     machine, write it as a pure `fn next(state, event) -> Option<state>`, add an
+     `[fsm]` section to `harness.toml`, and `dhx regen` *generates* the TLA+ from
+     the Rust (edit Rust, regen, commit) — so you only hand-write TLA+ for
+     genuinely concurrent specs. Every invariant needs an anti-vacuity entry in
+     `spec/tla/mutations.toml` (`check-mutation-coverage`).
+3. **Implement** the code to satisfy the spec — pure logic in `crates/core`, any
+   IO in an outer crate behind a port.
+4. **Unit + property tests.** Unit tests for the concrete cases; **proptest** for
+   the laws. `dhx cov` holds the core at the `[coverage].core` bar; `dhx mutants`
+   proves the tests actually *kill* logic mutations (a test green with the logic
+   inverted is weak and fails the gate).
+5. **DST** for any multi-step / stateful / network behaviour — drive the real
+   thing over a simulated world with a seed; a failure replays deterministically.
+6. **Route the rest by the feature's hardest question** (below) — reach for the
+   specialised instruments only where they pay off.
 
-**Routing rubric — do NOT run every tool on every feature** (ceremony is waste;
-payoff tracks the feature's hardest question):
+**Routing rubric for the OPTIONAL instruments — do NOT run every tool on every
+feature** (ceremony is waste; payoff tracks the feature's hardest question; the
+mandatory floor above always runs regardless):
 
 | Hardest question is… | Reach for |
 |---|---|
-| a pure law / invariant | proptest, then Kani if bounded-provable |
+| a pure law / invariant | proptest (always), then Kani if bounded-provable |
 | arithmetic / overflow / boundary | clippy (`arithmetic_side_effects`) + Kani |
 | concurrency / interleavings / protocol | TLA+ + DST; in-mem race → Loom; real race → TSAN |
-| HTTP-observable behaviour | BDD (+ DST for multi-step) |
+| externally-observable behaviour | the BDD scenario (always) + DST for multi-step |
 | raw/untrusted input parsing | fuzz |
 | spec ↔ code drift | the meta-gates (always on, free) |
 
@@ -77,24 +97,36 @@ payoff tracks the feature's hardest question):
 - **No file over 400 lines** (`check-file-size`, no exemption — split it).
 - **Coverage floor** on the verified core (`dhx cov`), proven non-vacuous by
   `dhx mutants`.
-- **Every REQ criterion is covered** (a scenario or a `(verified=…)` marker that
-  is itself backed by a real link).
+- **Every REQ has a BDD+EARS scenario** (mandatory floor; `(verified=…)` markers
+  supplement a scenario for non-observable criteria, they never replace it).
 - **Conventional-commit prefixes**; hooks always on; **`git --no-verify` is
   forbidden.**
 - **`#![forbid(unsafe_code)]`** in shipped crates.
 
-## The dev loop
+## The dev loop — verify continuously, by wall-clock cost
+
+The tiers are split by **speed**, so the fast verifiers run constantly and only
+the genuinely slow ones wait. Run them at this cadence — verification is part of
+development, not a pre-release afterthought:
+
+- **`dhx check` — on every file save** (~seconds). fmt + clippy + all the
+  meta-gates (traceability, spec-sync, BDD style/coverage, mutation-coverage,
+  file-size, docs-counts). Aggregates all failures in one pass.
+- **`dhx verify --quick` — after every small change / before each commit**
+  (~1-2 min). Adds the unit + property tests, coverage, Kani, **and the spec
+  checks: TLA+/TLC model-checking + its anti-vacuity mutation** (the spec is
+  verified as early as the code), plus deny/gitleaks/machete and one DST seed.
+- **`dhx verify --full` — after a big change / before release.** Adds only the
+  slow instruments: Miri (~15 min), TSAN, cargo-mutants, fuzz, Loom, and the
+  multi-seed DST sweep. Run it when you finish a feature, not on every save.
 
 Every tier runs **inside the `dhx:latest` image** — there is no host `dhx`. Run
 each command as `docker run --rm -v "$PWD":/work -w /work dhx:latest dhx <cmd>`
 (an alias `dhx() { docker run --rm -v "$PWD":/work -w /work dhx:latest dhx "$@"; }`
-makes it read like a local command). `dhx check` after every edit (cheap gates,
-~seconds, all failures aggregated) → `dhx verify --quick` before push (adds
-test/cov/kani/dst) → `dhx verify --full` before release (everything). Use the
-`/check` and `/verify` skills. Commits use conventional-commit prefixes
-(`feat`/`fix`/`test`/`refactor`/…), scoped `(REQ-NNN)` for behaviour; the
-`commit-msg` hook enforces it and `git log --grep=REQ-NNN` becomes the
-traceability matrix.
+makes it read like a local command). Use the `/check` and `/verify` skills.
+Commits use conventional-commit prefixes (`feat`/`fix`/`test`/`refactor`/…),
+scoped `(REQ-NNN)` for behaviour; the `commit-msg` hook enforces it and
+`git log --grep=REQ-NNN` becomes the traceability matrix.
 
 ## Harness-first review
 

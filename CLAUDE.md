@@ -48,6 +48,38 @@ example instead. The source of truth for anything that looks scaffolded is
 > (`init`, `check`, `verify`) runs via `docker run … dhx:latest dhx <cmd>`. After
 > editing the `Dockerfile` or a scaffold pin, rebuild it.
 
+## The approach dhx scaffolds (what the gates enforce in every project)
+
+dhx exists to make one workflow reliable in the projects it scaffolds —
+**specification → code → simulation**, never test-first TDD:
+
+1. **Spec first.** A `REQ-NNN.md` (EARS acceptance criteria), then the executable
+   spec: **BDD+EARS Gherkin scenarios always**, plus **TLA+** when the feature is
+   concurrent / a protocol (the lifecycle FSM's TLA+ is generated from the Rust by
+   `dhx regen`). Every TLA+ invariant carries an anti-vacuity mutation.
+2. **Code** derived from the spec — pure logic in the IO-free core, IO behind
+   ports in outer crates.
+3. **Simulation + proof** — unit + property (proptest) tests, coverage proven
+   non-vacuous by mutation testing, then DST/Kani/Loom/TSAN/fuzz routed by the
+   feature's hardest question.
+
+**The mandatory floor on every feature: BDD+EARS (a scenario per REQ, no opt-out),
+clippy, and property tests.** Everything else is routed by need — running every
+tool on every feature is ceremony. `check-bdd-coverage` fails a REQ with no
+scenario; a `(verified=…)` marker supplements a scenario, never replaces it.
+
+**Tiers are split by wall-clock so verification is continuous, not pre-release:**
+- `dhx check` — every save (~s): fmt + clippy + all meta-gates.
+- `dhx verify --quick` — after small changes / each commit (~1-2 min): unit +
+  proptest + coverage + Kani + **TLA+/TLC + its mutation** (spec checked as early
+  as code) + deny/gitleaks/machete + 1 DST seed.
+- `dhx verify --full` — after big changes / before release: adds only the slow
+  instruments — Miri (~15 min), TSAN, mutants, fuzz, Loom, multi-seed DST.
+
+This is encoded for the scaffolded project in
+`harness/assets/scaffold/CLAUDE.md.template` (and `verify_quick`/`verify_full` in
+`main.rs`). Keep the two in sync when the tiering changes.
+
 ## Lint discipline
 
 `harness/Cargo.toml` `[lints]` is the source of truth: `clippy::all + pedantic`

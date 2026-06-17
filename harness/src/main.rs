@@ -263,6 +263,13 @@ fn verify(cfg: &Config, full: bool, quick: bool) -> Result<()> {
 fn verify_quick(cfg: &Config) -> Result<()> {
     docker::require_container("verify --quick")?;
     println!("== verify --quick ==");
+    // Tiers are split by WALL-CLOCK, not release phase, so the fast verifiers run
+    // on every small change. `--quick` is everything that finishes in ~seconds:
+    // the meta-gates + static floor, the spec checks (TLC + its anti-vacuity
+    // mutation, ~2s — the spec must be checked as early as the code), the unit +
+    // property tests, coverage, Kani, and a short DST seed. The genuinely slow
+    // instruments (Miri, TSAN, mutants, fuzz, Loom, multi-seed DST) wait for
+    // `--full`.
     regen(cfg, true)?;
     check_traceability(cfg)?;
     check_spec_sync(cfg)?;
@@ -277,6 +284,10 @@ fn verify_quick(cfg: &Config) -> Result<()> {
     machete(cfg)?;
     gitleaks(cfg)?;
     deny(cfg)?;
+    // Spec first: model-check the TLA+ spec and prove its invariants non-vacuous
+    // before leaning on the code that implements them. Both are ~1-2s.
+    tlc(cfg, true)?;
+    tlc_mutate(cfg, true)?;
     test(cfg, None)?;
     cov(cfg)?;
     check_kani_codegen(cfg)?;
@@ -291,8 +302,12 @@ fn verify_full(cfg: &Config) -> Result<()> {
     // running against host tools would be the silent-nondeterminism trap.
     docker::require_container("verify --full")?;
     println!("== verify --full ==");
-    // verify_quick re-checks the container guard (a no-op here) then runs the
-    // quick gates; we extend it with the heavy tier below.
+    // `--full` = the quick tier PLUS only the genuinely slow instruments, so it
+    // is run after big changes / before release rather than on every save. Miri
+    // (~15m, std reinterpretation) and TSAN (std rebuild) dominate the cost;
+    // mutants and fuzz scale with code×tests; Loom exhausts thread interleavings;
+    // multi-seed DST is the discovery sweep over the 1-seed regression already in
+    // `--quick`.
     verify_quick(cfg)?;
     outdated(cfg, true)?;
     geiger(cfg)?;
@@ -302,15 +317,13 @@ fn verify_full(cfg: &Config) -> Result<()> {
     loom_run(cfg)?;
     // DST: fixed seeds are the deterministic regression set; the trailing
     // `random` run is the discovery pass (fresh entropy, seed printed for replay).
-    for seed in [0_u64, 1, 42, 1337] {
+    for seed in [1_u64, 42, 1337] {
         dst(cfg, seed, 20_000)?;
     }
     dst_seeded(cfg, "random", 20_000)?;
     for tgt in &cfg.raw.targets.fuzz {
         fuzz(cfg, Some(tgt.clone()), 20_000)?;
     }
-    tlc(cfg, true)?;
-    tlc_mutate(cfg, true)?;
     println!("== verify --full OK ==");
     Ok(())
 }

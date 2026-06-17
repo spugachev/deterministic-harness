@@ -112,6 +112,13 @@ fn lint_feature_file(path: &std::path::Path, raw: &str, errors: &mut Vec<String>
             continue;
         }
 
+        // Free narrative BEFORE the first scenario is the standard Gherkin
+        // Feature description block — allow it. The same line inside a scenario
+        // (where only steps/tables/doc-strings are legal) is still an error.
+        if saw_feature && !in_scenario {
+            continue;
+        }
+
         errors.push(format!("{}: unrecognized Gherkin line: {t:?}", where_(n)));
     }
 
@@ -146,19 +153,14 @@ fn lint_step(
     if kw != "And" && kw != "But" {
         *last_keyword = kw;
     }
-    // EARS: a Then (or And after Then) asserts a system response. We require it
-    // to name the system ("the service"/"the todo"/"the list"/"the response") —
-    // i.e. an observable response, not an action. Keeps Then clauses
-    // outcome-shaped.
-    if effective == "Then" {
-        let mentions_system = ["the service", "the todo", "the list", "the response"]
-            .iter()
-            .any(|s| body.contains(s));
-        if !mentions_system {
-            errors.push(format!(
-                "{loc}: Then step is not EARS response-shaped (name the system: \
-                 'the service/todo/list/response shall …'): {body:?}"
-            ));
-        }
+    // EARS: a Then (or And after Then) asserts a system *response*. We require
+    // the EARS modal "shall" — domain-neutral, so this works for any project
+    // ("the <subject> shall …"), not just one vocabulary. Keeps Then clauses
+    // outcome-shaped rather than phrased as another action.
+    if effective == "Then" && !body.to_lowercase().contains("shall") {
+        errors.push(format!(
+            "{loc}: Then step is not EARS response-shaped — use the modal 'shall' \
+             ('the <subject> shall …'): {body:?}"
+        ));
     }
 }

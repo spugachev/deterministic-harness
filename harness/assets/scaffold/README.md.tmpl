@@ -4,16 +4,22 @@ A verified Rust service scaffolded by **Deterministic Harness** (`dhx`).
 
 ## Quickstart
 
+Every tier runs inside the `dhx:latest` image (there is no host `dhx`); an alias
+`dhx() { docker run --rm -v "$PWD":/work -w /work dhx:latest dhx "$@"; }` makes
+these read like local commands:
+
 ```sh
-dhx check            # cheap gates (fmt, clippy, traceability, spec-sync, …)
-dhx verify --quick   # + tests, coverage, Kani, DST
-dhx verify --full    # everything, in the pinned Docker image
+dhx check            # every save: fmt, clippy, traceability, spec-sync, BDD coverage, …
+dhx verify --quick   # after small changes: + tests, proptest, coverage, Kani, TLA+/TLC, DST
+dhx verify --full    # after big changes / before release: + Miri, TSAN, mutants, fuzz, Loom
 ```
 
 ## Layout
 
-- `crates/core` — the IO-free verified core (domain FSM + ports).
-- `spec/` — requirements (`REQ-NNN`), ADRs, TLA+ specs (+ `mutations.toml`).
+- `crates/core` — the IO-free verified core (your pure domain + ports). Ships a
+  throwaway `domain::example` (REQ-001) as a green seed — replace it.
+- `spec/` — requirements (`REQ-NNN`), BDD features (EARS Gherkin), ADRs, and any
+  TLA+ specs.
 - `.harness/` — version pins, relocated tool configs, git hooks.
 - `harness.toml` — the one manifest `dhx` reads.
 
