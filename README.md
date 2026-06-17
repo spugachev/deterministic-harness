@@ -476,6 +476,33 @@ gitleaks: leaked credential — generic-api-key at src/config.rs:12
 
 ---
 
+## Does it actually catch bugs? An A/B run
+
+To check the harness earns its keep rather than just feeling rigorous, the same
+five features were built twice by the same agent (`claude -p`): once **OFF** — a
+plain `cargo` library, "make it compile, one smoke test, ship it" — and once
+**ON** — a `dhx init` project run through the full workflow (REQ → implement →
+tests + a property law → `dhx check` green). Each OFF arm's latent bug was then
+found _empirically_, by running one hostile input the smoke test skipped.
+
+| Feature | OFF shipped | Smoke | The bug (found by probing) | ON shipped | Caught by |
+|---|---|---|---|---|---|
+| `workload(&[u32])` sum | `iter().sum()` | ✅ | `[u32::MAX; 2]` → **overflow panic** | `fold(0, saturating_add)` | clippy + proptest |
+| `blend(a,b,wa)` average | `100 - wa` | ✅ | `wa = 200` → **subtract-overflow panic** | clamped `saturating_sub` | clippy + proptest |
+| `due_in_days` | `(due-now)/86400` | ✅ | overdue 12 h → **returns `0`, not `-1`** | `div_euclid` (floor) | proptest |
+| `parse_line` | `chars().next()` / `splitn` | ✅ | `"noseparator"` → **silently drops the text** | `-> Result<_, ParseError>` | proptest + the type |
+| `RingBuf` fixed cap | correct | ✅ | _none_ | same + invariant | — (fair tie) |
+
+**OFF shipped 4 real defects across 5 features; the smoke tests caught 0 of 4.
+ON shipped none**, each reaching a green `dhx check`. The wins were exactly where
+theory predicts — arithmetic, a boundary, a date sign, a parse — and the fifth
+feature (a plain ring buffer, no boundary as its hardest question) was an honest
+tie. The harness did not make the agent smarter; it changed what counts as
+"done," and that bar is what forced `saturating_add`, `div_euclid`, clamping,
+and a `Result`. Full write-up: [docs/experiment-ab-10-projects.md](docs/experiment-ab-10-projects.md).
+
+---
+
 ## Design principles (hard-won)
 
 - **A green gate must mean something.** Input present but unconfigured ⇒ fail
