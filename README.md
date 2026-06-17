@@ -62,117 +62,130 @@ from.
 
 ### Successful, but wrong
 
-An agent is told to fix a panic in a handler. It reads the file, adds the
-missing check, runs the tests. They pass. It commits. Three days later a
-different code path panics in production: the fix shadowed a legitimate error
-case. No test exercised that path; the diff was three lines; review caught
-nothing. By every measure available to the loop it ran in, the change was a
-success — and it was wrong.
+An agent is told to fix a panic in a handler. It reads the file, finds a missing
+check, adds it, runs the tests. They pass. It commits, and the task is closed.
+Three days later a different code path panics in production: the fix had shadowed
+a legitimate error case. No test exercised that path, the diff was three lines,
+and review caught nothing. By every measure available to the loop it ran in, the
+change was a success — and it was wrong.
 
-This is the problem. As code generation gets cheaper — by an LLM or a hurried
-human — the bottleneck moves from *writing* code to *verifying* it. "It
-compiles and the tests pass" is not "it is correct." A bigger model does not
-close that gap. A tighter, deterministic harness does.
+That gap is the whole problem. For most of software's history, *writing* code was
+the expensive part and verifying it rode along for free in the act of a human
+typing it slowly and reading it back. That economics has inverted. Code is now
+cheap to produce — by a model, or by a hurried human leaning on one — and the
+scarce resource is the confidence that it does what was meant. "It compiles and
+the tests pass" was always a proxy for correctness, and a leaky one; at machine
+speed the leaks become the dominant cost. A larger model does not close the gap,
+because the gap is not in the writing. It is in the checking.
 
-### Oracle trust, not compiler trust
+### The lever is the harness, not the model
 
-We trust a compiler because the input language has precise semantics and the
-transformation to machine code is well-defined. An agent has neither: it ingests
-unrestricted natural language and emits code with no contract that the output
-matches the intent. So the trust boundary has to move.
+So this project makes a bet that a growing number of teams — at Anthropic,
+Datadog, AWS, Sourcegraph, and elsewhere — have arrived at independently: the
+thing worth investing in is not the author but the *harness* around it. The
+author proposes; a deterministic stack of verifiers disposes. Datadog put the
+loop in one line — *the agent generates code, the harness verifies it,
+production telemetry validates it* — and the principle that falls out of it
+governs everything below: **verifiability bounds what can be created.** Wherever
+a property can be checked automatically, the work behind it can be delegated and
+trusted; wherever it cannot, it cannot, no matter how fluent the author.
 
-- **Compiler trust** — the output is correct because the input is *formal*.
-- **Oracle trust** — the output is *checked, after the edit*, by external
-  verifiers (type-checker, linter, tests, property checks, model checkers,
-  proofs), and the author iterates against their verdict.
+This is a real shift in where trust lives. We trust a *compiler* because its
+input language has precise semantics and its translation to machine code is
+well-defined — correctness flows from the formality of the input. An author
+working in natural language offers no such contract: nothing guarantees the
+output corresponds to the intent. So the trust boundary moves downstream, from
+the author to the *oracle* — the external checker that runs after the edit and
+that the author must satisfy. The model can be brilliant or mediocre; what makes
+its output trustworthy is that an oracle it does not control has signed off.
 
-The oracle is the trust boundary, not the author. The consequence drives every
-decision here: **verifiability bounds what can be created.** Wherever a property
-can be checked automatically, more of the work can be delegated; wherever it
-cannot, it cannot. The agent generates, the harness verifies, telemetry
-validates.
+### Determinism is the precondition
 
-### Determinism is the prerequisite, not the goal
+An oracle is only an oracle if it returns the **same verdict for the same input,
+every time.** A gate that is green on Tuesday and red on Wednesday for no reason
+teaches everyone to stop reading it, and a checker nobody reads is worse than no
+checker at all. So determinism is not a nice-to-have here; it is the thing that
+makes the whole arrangement load-bearing.
 
-A verifier is only an oracle if it gives the **same verdict for the same input,
-every time.** A flaky gate teaches you to ignore it. So the harness makes
-determinism a precondition:
+The harness pursues it on three fronts. Inside the program, every source of
+ambient non-determinism — the wall clock, randomness, identifier generation —
+is forced through a *port* (`Clock`, `Rng`, `IdGen`), so that a single seed
+fully determines a run and any failure can be replayed exactly; `clippy.toml`
+bans the direct calls so the discipline cannot quietly erode. Across the
+toolchain, the few gates that *use* entropy on purpose — fuzzing, property
+testing, random-seed simulation — are discovery tools that persist whatever they
+find, so a bug discovered by chance becomes a fixed, replayable regression.
+Across machines, every external tool's version is pinned, and `verify --full`
+runs inside a Docker image built *from those pins*, so two developers on two
+laptops reach one verdict.
 
-- Every gate is deterministic *as a verdict*. Discovery gates (fuzz, proptest,
-  random-seed simulation) use entropy to *find* bugs, but a found failure is
-  persisted and replays exactly.
-- All ambient non-determinism in the domain — wall-clock, randomness, id
-  generation — flows through **ports** (`Clock`/`Rng`/`IdGen`). A seed fully
-  determines a run, so a failure is reproducible. `clippy.toml` bans the direct
-  calls so the discipline cannot erode.
-- Tool versions are **pinned**, and `verify --full` runs inside a Docker image
-  built *from those pins*, so two machines reach the same verdict.
+### Gates must have teeth
 
-### Gates with teeth — and the one failure mode that matters
+The failure mode that matters most in a verification project is not a gate that
+is too strict. It is the **silently toothless gate**: the one that reports green
+while checking nothing. A secret scanner shipped with no rules. A model-checker
+invariant that happens to constrain nothing. A coverage gate pointed at the
+wrong crate. Each of these is worse than having no gate, because it manufactures
+confidence where there is none — and that false confidence is exactly what let
+the agent in the opening story close its task.
 
-A gate that cannot fail is decoration. The worst outcome in a verification
-project is the **silently toothless gate**: one that reports green while
-checking nothing — a secret scanner with no rules, a model-checker invariant
-that constrains nothing, a coverage gate scoped at the wrong crate. It is worse
-than no gate, because it manufactures confidence. The harness is built against
-exactly this:
+The harness is engineered against this one mistake. Its central rule is
+*presence implies mandatory*: if a project **looks** as though it has something
+to verify — an FSM source on disk, a TLA⁺ module that declares invariants, a
+requirement that claims it is `verified=`-by-proof — but that thing is not
+actually wired into a gate, `dhx` fails loudly rather than skipping in silence.
+"Out of scope" is something you must declare and can audit; "absent by accident"
+must never read as "passing." The same instinct is applied recursively: every
+TLA⁺ invariant must carry a known-violating mutation the checker is *required*
+to catch, so an invariant cannot ship vacuous; mutation testing sits behind the
+coverage number to prove the tests actually kill bugs rather than merely
+executing lines; and `dhx` runs the cheap subset of its own gates against its
+own source, because an unverified verifier would be the most toothless gate of
+all.
 
-- **Presence ⇒ mandatory.** If a project *looks* like it has something to verify
-  (an FSM source on disk, a `.tla` that declares invariants, a `verified=` claim
-  in a requirement) but it is not configured, `dhx` **fails loudly** — it never
-  silently skips. "Declared out of scope" is auditable; "happened to be absent"
-  is not.
-- **Anti-vacuity is itself gated.** Every TLA+ invariant must have a
-  known-violating mutation the model checker is *required* to catch, so an
-  invariant cannot ship vacuous.
-- **Test adequacy is gated.** Coverage sets a floor; mutation testing proves the
-  tests actually *kill* logic mutations — a test that still passes with the
-  logic inverted is a weak test and fails.
-- **The verifier verifies itself.** `dhx` runs the universal subset of its own
-  gates on its own source (fmt, clippy, tests, ≤400-line files). An unverified
-  verifier would be the ultimate toothless gate.
+### Comprehensive, but routed
 
-### Comprehensive, but routed — the verification pyramid
+Once you have a stack of oracles, the temptation is to run all of them on
+everything. That is ceremony, and ceremony is waste. The skill the pipeline
+actually encodes is *routing*: matching each tool to the question it is good at,
+and spending the expensive ones only where a feature's hardest question lives. A
+useful way to hold the stack in mind is as a pyramid — slowest and most about
+*understanding* at the top, most *diagnostic* at the base: a TLA⁺ spec to reason
+about a concurrent protocol; deterministic simulation as the primary integration
+test; bounded and deductive proofs (Kani, Verus) for the pure core; and, at the
+bottom, empirical ground truth from benchmarks and telemetry. Underneath all of
+it, on every edit at nearly no cost, runs the floor — clippy, property tests,
+and the intent-drift meta-gates.
 
-The toolchain is *comprehensive* — there is a tool for every class of bug — but
-you do **not** run every tool on every feature. Ceremony is waste. The skill the
-pipeline encodes is **routing**: spend the heavy instruments only where the
-feature's hardest question lands. The layers, slowest/most-understanding at the
-top, most-diagnostic at the bottom:
+The hard-won finding behind this shape is that **payoff tracks a feature's
+bug-surface, not the effort spent on it.** The harness earns its keep
+decisively on arithmetic, boundaries, dates, concurrency, undefined behaviour,
+and untrusted input — and is honest dead weight on flat CRUD. Knowing which is
+which is the entire craft.
 
-1. **TLA+** — understanding of a concurrent protocol (generated from the code).
-2. **DST** — the primary integration test: the real app over a simulated
-   network with a mocked clock, seeded and replayable.
-3. **Kani / Verus** — bounded and deductive proofs of pure functions.
-4. **Telemetry / benchmarks** — empirical ground truth.
+### The shape that gives the gates teeth
 
-Underneath all of it, on every edit at near-zero cost, runs the floor:
-clippy + proptest + the intent-drift meta-gates. The decisive empirical finding
-behind this design: **payoff tracks a feature's bug-surface, not effort.** The
-harness is decisive on arithmetic, boundaries, dates, concurrency, UB, and
-untrusted input — and dead weight on flat CRUD.
+None of this is free, and the price is an opinion about how the project is laid
+out. The gates are not generic linters that work anywhere; they verify a
+specific architecture, and that architecture is precisely what lets them bite —
+which is why `dhx` is a scaffolder rather than something you point at a repo that
+already exists.
 
-### The precondition: the shape that gives the gates teeth
+The core is a pure, IO-free crate: no database, no HTTP, no async runtime in
+`crates/core`. A pure function has no hidden inputs, and that is exactly what
+lets Kani and Verus prove it total and lets property tests assert laws over it.
+All the messiness — clocks, randomness, the network, the database — lives behind
+the ports, in outer crates, which is the seam that makes simulation, Loom, and
+the race detectors deterministic and replayable. And the project is a workspace,
+so coverage can run the whole test suite while reporting only on the core,
+counting every integration test that exercises it. Persistence and HTTP — axum,
+sqlx, whatever you reach for — are optional layers behind the ports, never a
+requirement of the harness; the harness needs the architecture, not any
+particular library.
 
-These gates are not generic. They verify a *specific architecture*, and that
-architecture is what makes them meaningful — which is why `dhx` is a scaffolder,
-not a linter you point at any repo:
-
-- **An IO-free verified core.** No DB, HTTP, or async runtime in `crates/core`.
-  A pure function has no hidden inputs, so Kani/Verus can prove it total and
-  proptest can assert laws over it.
-- **All non-determinism behind ports.** This is the seam that makes DST/Loom/
-  TSAN deterministic and replayable.
-- **A workspace.** Coverage runs the whole suite but reports only on the core,
-  so the core's bar counts every test that exercises it — including integration
-  tests in other crates.
-
-Persistence and HTTP (axum, sqlx, anything) are *optional outer crates* behind
-the ports — never a harness requirement. The harness needs the architecture,
-not any library.
-
-This is the right shape for the current era of agentic development, stated
-honestly as such — not a claim for all time. The harness is meant to evolve.
+This is offered as the right shape for the current era of agentic development,
+and stated honestly as that — not a claim for all time. The harness is built to
+be evolved.
 
 ---
 
