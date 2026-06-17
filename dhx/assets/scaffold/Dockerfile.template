@@ -1,0 +1,40 @@
+# {{project}} — Deterministic Harness image. Built FROM the project's own pins
+# (.harness/pins/*) so in-container tool versions match exactly (pins are the
+# single version authority). `dhx verify --full` runs here.
+#
+#   docker build -t {{project}}-harness:latest .
+#   docker run --rm -v "$PWD":/work:ro -w /work {{project}}-harness:latest dhx verify --full
+#
+# Multi-stage so toolchain layers cache across rebuilds.
+
+FROM debian:bookworm-slim AS base
+ENV DHX_IN_CONTAINER=1
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        curl ca-certificates git build-essential pkg-config libssl-dev \
+        default-jre-headless \
+    && rm -rf /var/lib/apt/lists/*
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+ENV PATH="/root/.cargo/bin:${PATH}"
+
+FROM base AS toolchain
+WORKDIR /work
+COPY rust-toolchain.toml ./
+COPY .harness/pins/ ./.harness/pins/
+RUN rustup show \
+    && rustup toolchain install "$(cat .harness/pins/nightly.txt)" \
+         --component miri --component rust-src
+# TLA+ tools jar at the pinned version → where resolve_tlc_jar looks
+# (/usr/local/lib/tla2tools.jar). Verus at the pinned version → on PATH.
+
+FROM toolchain AS tools
+RUN cargo install --locked cargo-llvm-cov cargo-deny cargo-machete cargo-nextest \
+        cargo-mutants cargo-geiger cargo-outdated
+RUN cargo install --locked kani-verifier && cargo kani setup
+RUN cargo "+$(cat .harness/pins/nightly.txt)" install --locked cargo-fuzz
+# gitleaks: install a pinned release binary onto PATH.
+
+FROM tools AS dhx
+# Install dhx at the version this project was scaffolded with (pins/dhx.txt) so
+# host and container agree.
+RUN cargo install dhx --version "$(cat .harness/pins/dhx.txt)"
+WORKDIR /work

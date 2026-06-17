@@ -1,0 +1,49 @@
+[package]
+name         = "dhx"
+version      = "0.1.0"
+edition      = "2021"
+rust-version = "1.83"
+license      = "MIT OR Apache-2.0"
+authors      = ["Deterministic Harness"]
+description  = "Deterministic Harness — opinionated scaffolder + verification harness for Rust services"
+repository   = "local"
+publish      = false
+# Ship the embedded scaffold assets in the packaged crate (R4/F4): the binary
+# materializes them on `dhx init`. `assets/**` MUST be inside the crate dir.
+include      = ["src/**", "assets/**", "README.md"]
+
+[[bin]]
+name = "dhx"
+path = "src/main.rs"
+
+[dependencies]
+clap          = { version = "4", features = ["derive"] }
+anyhow        = "1"
+syn           = { version = "2", features = ["full", "extra-traits"] }
+quote         = "1"
+serde         = { version = "1", features = ["derive"] }
+serde_yaml    = "0.9"
+serde_json    = "1"
+toml          = "0.8"
+walkdir       = "2"
+regex         = "1"
+include_dir   = "0.7"
+cargo_metadata = "0.18"
+
+[lints.rust]
+warnings               = "deny"
+unsafe_op_in_unsafe_fn = "forbid"
+
+[lints.clippy]
+all      = { level = "deny", priority = -1 }
+pedantic = { level = "deny", priority = -1 }
+# CLI tool overrides: print/unwrap/expect are fine in a developer CLI.
+print_stdout            = "allow"
+print_stderr            = "allow"
+unwrap_used             = "allow"
+expect_used             = "allow"
+panic                   = "allow"
+todo                    = "allow"
+unimplemented           = "allow"
+missing_errors_doc      = "allow"
+multiple_crate_versions = "allow"
