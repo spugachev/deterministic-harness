@@ -4,7 +4,8 @@ This repo is the **Deterministic Harness** system. `dhx` (in `dhx/`) is the CLI
 that scaffolds + verifies _other_ projects; `dhx/assets/scaffold/` is the
 embedded template it writes. This file governs working on **dhx itself** — it is
 NOT the file a scaffolded project gets (that is
-`dhx/assets/scaffold/CLAUDE.md.template`). Read [docs/](docs/) for the design.
+`dhx/assets/scaffold/CLAUDE.md.template`). Read [README.md](README.md) for the
+approach, the philosophy, and the per-tool detail.
 
 ## Invariants — applied to every change
 
