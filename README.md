@@ -7,8 +7,8 @@ same thing as "it is correct."
 `dhx` is the answer that bets on the harness, not the model: it scaffolds a new
 Rust service whose architecture is built so that a deep stack of verifiers —
 type checking, property tests, model checking, bounded and deductive proofs,
-simulation, race detectors — can each have _teeth_, and one CLI runs them
-locally.
+simulation, race detectors — can each catch the bug it is responsible for, and
+one CLI runs them all locally.
 
 ---
 
@@ -112,29 +112,29 @@ Across machines, every external tool's version is pinned, and `verify --full`
 runs inside a Docker image built _from those pins_, so two developers on two
 laptops reach one verdict.
 
-### Gates must have teeth
+### A green gate must mean something
 
 The failure mode that matters most in a verification project is not a gate that
-is too strict. It is the **silently toothless gate**: the one that reports green
-while checking nothing. A secret scanner shipped with no rules. A model-checker
-invariant that happens to constrain nothing. A coverage gate pointed at the
-wrong crate. Each of these is worse than having no gate, because it manufactures
-confidence where there is none — and that false confidence is exactly what let
-the agent in the opening story close its task.
+is too strict. It is the **gate that reports green while checking nothing** — a
+secret scanner shipped with no rules, a model-checker invariant that happens to
+constrain nothing, a coverage gate pointed at the wrong crate. Each is worse
+than having no gate at all, because it manufactures confidence where there is
+none, and that false confidence is exactly what let the agent in the opening
+story close its task.
 
 The harness is engineered against this one mistake. Its central rule is
 _presence implies mandatory_: if a project **looks** as though it has something
-to verify — an FSM source on disk, a TLA⁺ module that declares invariants, a
+to verify — an FSM source on disk, a TLA+ module that declares invariants, a
 requirement that claims it is `verified=`-by-proof — but that thing is not
 actually wired into a gate, `dhx` fails loudly rather than skipping in silence.
 "Out of scope" is something you must declare and can audit; "absent by accident"
 must never read as "passing." The same instinct is applied recursively: every
-TLA⁺ invariant must carry a known-violating mutation the checker is _required_
-to catch, so an invariant cannot ship vacuous; mutation testing sits behind the
-coverage number to prove the tests actually kill bugs rather than merely
-executing lines; and `dhx` runs the cheap subset of its own gates against its
-own source, because an unverified verifier would be the most toothless gate of
-all.
+TLA+ invariant carries a known-violating mutation the checker is _required_ to
+report, so an invariant cannot pass while constraining nothing; mutation testing
+sits behind the coverage number to confirm the tests actually fail when the
+logic is broken, not merely execute lines; and `dhx` runs the cheap subset of
+its own gates against its own source, because a verifier nobody verifies is the
+emptiest gate of all.
 
 ### Comprehensive, but routed
 
@@ -143,7 +143,7 @@ everything. That is ceremony, and ceremony is waste. The skill the pipeline
 actually encodes is _routing_: matching each tool to the question it is good at,
 and spending the expensive ones only where a feature's hardest question lives. A
 useful way to hold the stack in mind is as a pyramid — slowest and most about
-_understanding_ at the top, most _diagnostic_ at the base: a TLA⁺ spec to reason
+_understanding_ at the top, most _diagnostic_ at the base: a TLA+ spec to reason
 about a concurrent protocol; deterministic simulation as the primary integration
 test; bounded and deductive proofs (Kani, Verus) for the pure core; and, at the
 bottom, empirical ground truth from benchmarks and telemetry. Underneath all of
@@ -156,13 +156,13 @@ decisively on arithmetic, boundaries, dates, concurrency, undefined behaviour,
 and untrusted input — and is honest dead weight on flat CRUD. Knowing which is
 which is the entire craft.
 
-### The shape that gives the gates teeth
+### The architecture that makes it work
 
 None of this is free, and the price is an opinion about how the project is laid
 out. The gates are not generic linters that work anywhere; they verify a
-specific architecture, and that architecture is precisely what lets them bite —
-which is why `dhx` is a scaffolder rather than something you point at a repo that
-already exists.
+specific architecture, and that architecture is precisely what gives each
+verifier something solid to check — which is why `dhx` is a scaffolder rather
+than something you point at a repo that already exists.
 
 The core is a pure, IO-free crate: no database, no HTTP, no async runtime in
 `crates/core`. A pure function has no hidden inputs, and that is exactly what
@@ -185,23 +185,20 @@ be evolved.
 ## The tools — what each is, why it's here, and how it helps
 
 One tool per bug class: each catches a class **no other tool catches**, so a
-duplicate would add wall-clock and "which is authoritative?" debates for no
-safety gain. Ratings are practical bug-catching ROI (graded from A/B studies +
-planted-defect probes on the prototype this harness came from), not raw
-capability. "Tier" is the cheapest tier the tool runs in.
-
-The order below is the order a human should read it in: the cheap, broad floor
-first, then progressively more specialised instruments, grouped by the question
-each answers. "Tier" is the cheapest tier the tool runs in; ★ is practical
-bug-catching ROI (from A/B studies + planted-defect probes on the prototype this
-harness came from), not raw capability.
+duplicate would only add wall-clock and "which one is authoritative?" arguments
+for no safety gain. The tables read top to bottom in the order a developer
+should meet the tools — the cheap, broad floor first, then progressively more
+specialised instruments, grouped by the question each answers. "Tier" is the
+cheapest tier the tool runs in; ★ is practical bug-catching ROI (from A/B
+studies and planted-defect probes on the prototype this harness came from), not
+raw capability.
 
 **Static floor — runs on every edit, ~free**
 
 | Tool | Tier | Catches | How it helps | ★ |
 |---|---|---|---|---|
 | **clippy** (4 levels + restriction) | check | antipatterns, unchecked arithmetic, lossy casts, reachable panics, complexity, direct non-determinism | refuses whole bug classes before a test even runs | ★★★★★ |
-| **meta-gates** (traceability, spec-sync, bdd/mutation-coverage, file-size, docs-counts) | check | drift between spec, code, and docs; vacuous invariants; the _toothless gate itself_ | keep every other gate and the docs honest | ★★★★☆ |
+| **meta-gates** (traceability, spec-sync, bdd/mutation-coverage, file-size, docs-counts) | check | drift between spec, code, and docs; vacuous invariants; a gate that checks nothing | keep every other gate and the docs honest | ★★★★☆ |
 
 **Behaviour & test quality — does it do the right thing, and do the tests prove it**
 
@@ -241,13 +238,13 @@ harness came from), not raw capability.
 | Tool | Tier | Catches | How it helps | ★ |
 |---|---|---|---|---|
 | **cargo-deny** | quick | vulnerable / banned / bad-license dependencies | a supply-chain class the compiler never looks at | ★★★★☆ |
-| **gitleaks** | quick | committed secrets | catches a key before it leaves your machine (toothless without default rules) | ★★★★☆ |
+| **gitleaks** | quick | committed secrets | catches a key before it leaves your machine | ★★★★☆ |
 | **machete / outdated / geiger** | quick/full | unused deps; stale deps; unsafe-surface trend | hygiene; `outdated`/`geiger` advise, never block | ★★ |
 
 What follows is one example per tool — a snippet and the error it catches — in
 the same grouped order.
 
-#### Static floor
+### Static floor
 
 **clippy** — four lint levels (`all + pedantic + nursery + cargo`) plus a
 hand-picked restriction allowlist. It refuses whole bug classes at zero marginal
@@ -265,15 +262,15 @@ error: arithmetic operation that can overflow
 
 The fix is `fold(0, u32::saturating_add)`. The same restriction set rejects a
 panicking `OffsetDateTime - OffsetDateTime`, an unchecked `[i]`, a stray
-`.unwrap()`, and a lossy `as` cast — each before a single test runs. The
-**meta-gates** sit alongside it, checking that the spec, code, and docs still
-agree (see "Gates must have teeth").
+`.unwrap()`, and a lossy `as` cast — each before a single test runs. Alongside
+it, the **meta-gates** check that the spec, the code, and the docs still agree
+(see "A green gate must mean something").
 
-#### Behaviour & test quality
+### Behaviour & test quality
 
 **cucumber (BDD)** — each requirement's acceptance criterion, written in
 EARS-shaped Gherkin and run end-to-end as a test against the real service. It is
-how you state and check *behaviour* — what the system should do, in the
+how you state and check _behaviour_ — what the system should do, in the
 requirement's own words — not merely an HTTP assertion.
 
 ```gherkin
@@ -287,7 +284,7 @@ Scenario: REQ-042 — over-budget create is rejected
 Step failed: expected status 429, got 200   (the limiter wasn't wired in)
 ```
 
-Because the scenario is phrased like the requirement, a missing criterion *is* a
+Because the scenario is phrased like the requirement, a missing criterion _is_ a
 failing or absent scenario — and `check-bdd-coverage` fails if a criterion has
 no scenario (or a `(verified=…)` marker backed by a real proof link).
 
@@ -312,8 +309,9 @@ An item overdue by 12 h reported `0` ("on time") — truncation toward zero, not
 floor. The example test only checked positive exact days and missed it.
 
 **cargo-llvm-cov** sets the coverage floor on the core; **cargo-mutants** then
-proves those tests have teeth — it mutates the *product* code and reruns the
-suite; a surviving mutant is a test that doesn't actually check that behaviour.
+confirms those tests actually catch bugs — it mutates the _product_ code and
+reruns the suite, and a surviving mutant is a test that never really checked
+that behaviour.
 
 ```
 MISSED: replace `>` with `>=` in rate_limit.rs:42 — caught by 0 tests
@@ -322,7 +320,7 @@ MISSED: replace `>` with `>=` in rate_limit.rs:42 — caught by 0 tests
 The boundary `n == capacity` was never tested. Coverage was green; the mutant
 proved the test was hollow. Pin it with a `n == capacity` test.
 
-#### Proofs of the pure core
+### Proofs of the pure core
 
 **Kani** — symbolic inputs (`kani::any()`), explored exhaustively within bounds.
 
@@ -353,7 +351,7 @@ proof fn ceil_div_is_tight(n: nat, d: nat)
 
 Kani can only check a bounded slice of `n`; Verus closes the ∀.
 
-#### Concurrency & protocol
+### Concurrency & protocol
 
 **TLA+ / TLC** — you write the _specification_ of a state machine or concurrency
 protocol; TLC explores **all** reachable states for an invariant violation. For
@@ -427,7 +425,7 @@ WARNING: ThreadSanitizer: data race
 A non-atomic shared write _usually_ produces the right total on a quiet machine
 (so the test is green and ships); TSAN reports the race regardless of schedule.
 
-#### Memory safety & untrusted input
+### Memory safety & untrusted input
 
 **Miri** — interprets the program under a machine that detects UB.
 
@@ -459,12 +457,13 @@ thread panicked: 'attempt to subtract with overflow'   (input: "\x0e")
 A hand-indexed parser underflows on a leading control byte — found in under a
 second.
 
-#### Supply chain & secrets
+### Supply chain & secrets
 
 **cargo-deny** rejects a non-allowlisted license or a RUSTSEC advisory;
-**gitleaks** catches a committed secret (it is _silently toothless_ without
-`useDefault = true` — a real incident the harness fixed); **machete** flags a
-dependency you declared but never used. None of these is visible to compilation.
+**gitleaks** catches a committed secret (it scans with the default ruleset — a
+config that omits it quietly finds nothing, a real incident the harness fixed);
+**machete** flags a dependency you declared but never used. None of these is
+visible to compilation.
 
 ```
 error[rejected]: failed to satisfy license requirements
@@ -479,8 +478,8 @@ gitleaks: leaked credential — generic-api-key at src/config.rs:12
 
 ## Design principles (hard-won)
 
-- **No silently-toothless gate.** Input present but unconfigured ⇒ fail loudly,
-  never skip. This is the project's defining invariant.
+- **A green gate must mean something.** Input present but unconfigured ⇒ fail
+  loudly, never skip. This is the project's defining invariant.
 - **Pins are the single version authority.** The Docker image is built _from_
   `.harness/pins/*`; there is no second source to drift.
 - **One tool per bug class; route, don't spray.** A cheap always-on floor plus
