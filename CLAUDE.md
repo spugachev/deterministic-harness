@@ -1,11 +1,22 @@
 # CLAUDE.md — conventions for developing `dhx` itself
 
-This repo is the **Deterministic Harness** system. `dhx` (in `dhx/`) is the CLI
-that scaffolds + verifies _other_ projects; `dhx/assets/scaffold/` is the
-embedded template it writes. This file governs working on **dhx itself** — it is
-NOT the file a scaffolded project gets (that is
-`dhx/assets/scaffold/CLAUDE.md.template`). Read [README.md](README.md) for the
-approach, the philosophy, and the per-tool detail.
+This repo is the **Deterministic Harness** system. `dhx` (the CLI binary, whose
+crate lives in `harness/`) scaffolds + verifies _other_ projects;
+`harness/assets/scaffold/` is the embedded template it writes. This file governs
+working on **dhx itself** — it is NOT the file a scaffolded project gets (that is
+`harness/assets/scaffold/CLAUDE.md.template`). Read [README.md](README.md) for
+the approach, the philosophy, and the per-tool detail.
+
+> **The crate folder is `harness/`; the binary/command is `dhx`.** The directory
+> was renamed `dhx/` → `harness/`; the crate name and published CLI stay `dhx`
+> (so `cargo build -p dhx`, `cargo install --path harness`).
+
+## Generated trees — never hand-edit
+
+`examples/` is **generated** — each example is produced by `dhx init` + an agent
+run, then verified. Do NOT edit files under `examples/` directly; regenerate the
+example instead. The source of truth for anything that looks scaffolded is
+`harness/assets/scaffold/`, never a copy materialized from it.
 
 ## Invariants — applied to every change
 
@@ -15,7 +26,7 @@ approach, the philosophy, and the per-tool detail.
    - `cargo fmt --all --check`
    - `cargo clippy --workspace --all-targets` clean (the lints below)
    - `cargo test -p dhx` green
-   - **every `dhx/src/*.rs` file ≤ 400 lines** — the limit dhx enforces on
+   - **every `harness/src/*.rs` file ≤ 400 lines** — the limit dhx enforces on
      others. If a file would exceed it, split it (e.g. `tools.rs` →
      `tools_heavy.rs`, `main.rs` → `proc.rs`, `config.rs` → `config_explain.rs`,
      `fsm.rs` → `fsm_render.rs`). This is non-negotiable.
@@ -25,15 +36,21 @@ approach, the philosophy, and the per-tool detail.
    `dhx`. The harness requires the _ports architecture_, not any specific library.
 
 > **Note — dhx is the tool, not a scaffolded service.** dhx has no
-> `harness.toml`, no `Dockerfile`, no FSM/ports of its own: those belong to the
-> _projects dhx scaffolds_. `render-dockerfile` / `dhx verify --full` are
-> exercised inside a scaffolded project (and by the `shipped_scaffold_*` self-
-> tests that materialize the embedded scaffold and validate it), not against
-> this repo. dhx's own CI-equivalent is the self-verify subset in invariant 2.
+> `harness.toml`, no FSM/ports of its own: those belong to the _projects dhx
+> scaffolds_. `dhx verify` is exercised inside a scaffolded project (and by the
+> `shipped_scaffold_*` self-tests that materialize the embedded scaffold and
+> validate it), not against this repo. dhx's own CI-equivalent is the self-verify
+> subset in invariant 2.
+
+> **One image, no host dhx.** The repo root holds a single hand-written
+> `Dockerfile` that builds `dhx:latest` — the `dhx` binary plus every pinned
+> tool. There is no `dhx` on the host and no per-project Dockerfile: every tier
+> (`init`, `check`, `verify`) runs via `docker run … dhx:latest dhx <cmd>`. After
+> editing the `Dockerfile` or a scaffold pin, rebuild it.
 
 ## Lint discipline
 
-`dhx/Cargo.toml` `[lints]` is the source of truth: `clippy::all + pedantic`
+`harness/Cargo.toml` `[lints]` is the source of truth: `clippy::all + pedantic`
 denied, `warnings = "deny"`, `unsafe_op_in_unsafe_fn = "forbid"`. A developer-CLI
 allows `print_*`/`unwrap`/`expect`/`panic` (it's a tool, not a library). The only
 escape from a deny is a site-level `#[allow(lint, reason = "…")]` that **must
@@ -42,7 +59,7 @@ carry a reason** — a bare `#[allow]` is not acceptable.
 ## Layout
 
 ```
-dhx/
+harness/
 ├── Cargo.toml              [[bin]] dhx; include = ["src/**","assets/**"]
 ├── assets/scaffold/        the embedded template (include_dir!) — inert names:
 │                           dot.* and *.tmpl, renamed on `dhx init`
@@ -54,7 +71,7 @@ dhx/
     ├── corpus.rs           the SINGLE requirements()/scenarios()/tla_specs() walk
     ├── init.rs             `dhx init` scaffolder (dot/.tmpl rename, git, regen, stamp)
     ├── migrate.rs          schema-version seam + `dhx pins update`
-    ├── docker.rs           --full container re-exec + `render-dockerfile`
+    ├── docker.rs           the container guard (require_container / in_container)
     ├── fsm.rs / fsm_render  FSM extraction (syn) + TLA rendering
     ├── fsm_sync.rs          check-spec-sync
     ├── traceability.rs      check-traceability (+ lock --check/--write)
@@ -86,11 +103,11 @@ dhx/
 ## Verifying a change end-to-end
 
 ```sh
-cargo build -p dhx && cargo test -p dhx          # builds + 6 self-tests
+cargo build -p dhx && cargo test -p dhx          # builds + self-tests
 cargo fmt --all --check && cargo clippy --workspace --all-targets
-cargo install --path dhx --force                  # embeds current assets
+cargo install --path harness --force              # embeds current assets
 dhx init /tmp/probe && cd /tmp/probe && dhx check # scaffold → 11 gates green
 ```
 
-If you change `assets/scaffold/`, always re-run `cargo install --path dhx
+If you change `assets/scaffold/`, always re-run `cargo install --path harness
 --force` before testing `dhx init` — the assets are embedded at build time.

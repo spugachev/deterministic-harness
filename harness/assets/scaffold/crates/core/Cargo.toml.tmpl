@@ -1,0 +1,18 @@
+[package]
+name         = "core"
+version      = "0.1.0"
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+
+# The verified core is IO-FREE by construction: no async runtime, no DB, no HTTP.
+# That purity is what lets Kani/proptest prove its functions total. Any
+# persistence/HTTP adapter (axum, sqlx, …) is an OPTIONAL outer crate the
+# developer adds later behind the ports — never a harness requirement.
+[dependencies]
+
+[dev-dependencies]
+proptest = "1"
+
+[lints]
+workspace = true
