@@ -1,21 +1,14 @@
 # Deterministic Harness (`dhx`)
 
 Code is cheap to write now and expensive to trust. The bottleneck has moved from
-*writing* to *verifying* — and "it compiles and the tests pass" was never the
+_writing_ to _verifying_ — and "it compiles and the tests pass" was never the
 same thing as "it is correct."
 
 `dhx` is the answer that bets on the harness, not the model: it scaffolds a new
 Rust service whose architecture is built so that a deep stack of verifiers —
 type checking, property tests, model checking, bounded and deductive proofs,
-simulation, race detectors — can each have *teeth*, and one CLI runs them
-locally. There is no CI; the gates **are** the gate.
-
-It is a scaffolder, not a linter you point at an existing repo. The gates only
-bite because the project has a particular shape (an IO-free core behind
-Clock/Rng/IdGen ports); `dhx init` lays that shape down so the harness is
-meaningful from the first commit. The rest of this document is the argument for
-why that trade is worth making, and a tour of every tool — with the bug each one
-catches.
+simulation, race detectors — can each have _teeth_, and one CLI runs them
+locally.
 
 ---
 
@@ -47,11 +40,11 @@ dependency** back on this repo.
 
 The three tiers:
 
-| Tier | Command | When | Cost |
-|---|---|---|---|
-| Preflight | `dhx check` | after every edit | seconds — 11 cheap gates, all failures aggregated |
-| Quick | `dhx verify --quick` | before push | + test, coverage, Kani, DST |
-| Full | `dhx verify --full` | before release | + Verus, TLA+, Miri, TSAN, Loom, fuzz, mutants — **in Docker** |
+| Tier      | Command              | When             | Cost                                                           |
+| --------- | -------------------- | ---------------- | -------------------------------------------------------------- |
+| Preflight | `dhx check`          | after every edit | seconds — 11 cheap gates, all failures aggregated              |
+| Quick     | `dhx verify --quick` | before push      | + test, coverage, Kani, DST                                    |
+| Full      | `dhx verify --full`  | before release   | + Verus, TLA+, Miri, TSAN, Loom, fuzz, mutants — **in Docker** |
 
 `dhx config explain <gate>` shows any gate's resolved value and where it came
 from.
@@ -69,7 +62,7 @@ a legitimate error case. No test exercised that path, the diff was three lines,
 and review caught nothing. By every measure available to the loop it ran in, the
 change was a success — and it was wrong.
 
-That gap is the whole problem. For most of software's history, *writing* code was
+That gap is the whole problem. For most of software's history, _writing_ code was
 the expensive part and verifying it rode along for free in the act of a human
 typing it slowly and reading it back. That economics has inverted. Code is now
 cheap to produce — by a model, or by a hurried human leaning on one — and the
@@ -82,20 +75,20 @@ because the gap is not in the writing. It is in the checking.
 
 So this project makes a bet that a growing number of teams — at Anthropic,
 Datadog, AWS, Sourcegraph, and elsewhere — have arrived at independently: the
-thing worth investing in is not the author but the *harness* around it. The
+thing worth investing in is not the author but the _harness_ around it. The
 author proposes; a deterministic stack of verifiers disposes. Datadog put the
-loop in one line — *the agent generates code, the harness verifies it,
-production telemetry validates it* — and the principle that falls out of it
+loop in one line — _the agent generates code, the harness verifies it,
+production telemetry validates it_ — and the principle that falls out of it
 governs everything below: **verifiability bounds what can be created.** Wherever
 a property can be checked automatically, the work behind it can be delegated and
 trusted; wherever it cannot, it cannot, no matter how fluent the author.
 
-This is a real shift in where trust lives. We trust a *compiler* because its
+This is a real shift in where trust lives. We trust a _compiler_ because its
 input language has precise semantics and its translation to machine code is
 well-defined — correctness flows from the formality of the input. An author
 working in natural language offers no such contract: nothing guarantees the
 output corresponds to the intent. So the trust boundary moves downstream, from
-the author to the *oracle* — the external checker that runs after the edit and
+the author to the _oracle_ — the external checker that runs after the edit and
 that the author must satisfy. The model can be brilliant or mediocre; what makes
 its output trustworthy is that an oracle it does not control has signed off.
 
@@ -109,14 +102,14 @@ makes the whole arrangement load-bearing.
 
 The harness pursues it on three fronts. Inside the program, every source of
 ambient non-determinism — the wall clock, randomness, identifier generation —
-is forced through a *port* (`Clock`, `Rng`, `IdGen`), so that a single seed
+is forced through a _port_ (`Clock`, `Rng`, `IdGen`), so that a single seed
 fully determines a run and any failure can be replayed exactly; `clippy.toml`
 bans the direct calls so the discipline cannot quietly erode. Across the
-toolchain, the few gates that *use* entropy on purpose — fuzzing, property
+toolchain, the few gates that _use_ entropy on purpose — fuzzing, property
 testing, random-seed simulation — are discovery tools that persist whatever they
 find, so a bug discovered by chance becomes a fixed, replayable regression.
 Across machines, every external tool's version is pinned, and `verify --full`
-runs inside a Docker image built *from those pins*, so two developers on two
+runs inside a Docker image built _from those pins_, so two developers on two
 laptops reach one verdict.
 
 ### Gates must have teeth
@@ -130,13 +123,13 @@ confidence where there is none — and that false confidence is exactly what let
 the agent in the opening story close its task.
 
 The harness is engineered against this one mistake. Its central rule is
-*presence implies mandatory*: if a project **looks** as though it has something
+_presence implies mandatory_: if a project **looks** as though it has something
 to verify — an FSM source on disk, a TLA⁺ module that declares invariants, a
 requirement that claims it is `verified=`-by-proof — but that thing is not
 actually wired into a gate, `dhx` fails loudly rather than skipping in silence.
 "Out of scope" is something you must declare and can audit; "absent by accident"
 must never read as "passing." The same instinct is applied recursively: every
-TLA⁺ invariant must carry a known-violating mutation the checker is *required*
+TLA⁺ invariant must carry a known-violating mutation the checker is _required_
 to catch, so an invariant cannot ship vacuous; mutation testing sits behind the
 coverage number to prove the tests actually kill bugs rather than merely
 executing lines; and `dhx` runs the cheap subset of its own gates against its
@@ -147,10 +140,10 @@ all.
 
 Once you have a stack of oracles, the temptation is to run all of them on
 everything. That is ceremony, and ceremony is waste. The skill the pipeline
-actually encodes is *routing*: matching each tool to the question it is good at,
+actually encodes is _routing_: matching each tool to the question it is good at,
 and spending the expensive ones only where a feature's hardest question lives. A
 useful way to hold the stack in mind is as a pyramid — slowest and most about
-*understanding* at the top, most *diagnostic* at the base: a TLA⁺ spec to reason
+_understanding_ at the top, most _diagnostic_ at the base: a TLA⁺ spec to reason
 about a concurrent protocol; deterministic simulation as the primary integration
 test; bounded and deductive proofs (Kani, Verus) for the pure core; and, at the
 bottom, empirical ground truth from benchmarks and telemetry. Underneath all of
@@ -197,47 +190,109 @@ safety gain. Ratings are practical bug-catching ROI (graded from A/B studies +
 planted-defect probes on the prototype this harness came from), not raw
 capability. "Tier" is the cheapest tier the tool runs in.
 
-| Tool | Tier | Catches (bug class) | How it helps | ★ |
+The order below is the order a human should read it in: the cheap, broad floor
+first, then progressively more specialised instruments, grouped by the question
+each answers. "Tier" is the cheapest tier the tool runs in; ★ is practical
+bug-catching ROI (from A/B studies + planted-defect probes on the prototype this
+harness came from), not raw capability.
+
+**Static floor — runs on every edit, ~free**
+
+| Tool | Tier | Catches | How it helps | ★ |
 |---|---|---|---|---|
-| **clippy** (4 levels + restriction) | check | antipatterns, unchecked arithmetic, lossy casts, reachable panics, complexity, direct non-determinism | the always-on floor; refuses whole bug classes before a test runs | ★★★★★ |
+| **clippy** (4 levels + restriction) | check | antipatterns, unchecked arithmetic, lossy casts, reachable panics, complexity, direct non-determinism | refuses whole bug classes before a test even runs | ★★★★★ |
+| **meta-gates** (traceability, spec-sync, bdd/mutation-coverage, file-size, docs-counts) | check | drift between spec, code, and docs; vacuous invariants; the _toothless gate itself_ | keep every other gate and the docs honest | ★★★★☆ |
+
+**Behaviour & test quality — does it do the right thing, and do the tests prove it**
+
+| Tool | Tier | Catches | How it helps | ★ |
+|---|---|---|---|---|
+| **cucumber** (BDD) | quick | implemented behaviour that diverges from its stated acceptance criteria | turns each requirement into an executable, human-readable scenario, run end-to-end against the real service | ★★★☆☆ |
 | **proptest** | quick | violation of a pure law (idempotence, monotonicity, round-trip, bounds) | finds the boundary the happy-path test forgot, then shrinks it | ★★★★★ |
-| **meta-gates** (traceability, spec-sync, bdd-coverage, mutation-coverage, file-size, docs-counts) | check | spec ↔ code ↔ docs drift; vacuous invariants; the *toothless gate itself* | keep every other gate and the docs honest, ~free | ★★★★☆ |
-| **DST** (turmoil) | quick | full-stack multi-step / network / fault-injection sequences | drives the real app over a simulated network; replays any failure from a seed | ★★★★☆ |
-| **cargo-mutants** | full | weak tests (logic inverted, tests still green) | proves the test suite has teeth, not just coverage | ★★★★☆ |
-| **Loom** | full | in-memory data races / lost updates (about *schedules*, not inputs) | exhausts every interleaving of a shared-memory pattern | ★★★★☆ |
-| **cargo-deny** | quick | vulnerable / banned / bad-license dependencies | a supply-chain class compilation cannot see | ★★★★☆ |
-| **cargo-llvm-cov** | quick | untested regions of the verified core | the quantitative adequacy floor (proven non-vacuous by mutants) | ★★★★☆ |
-| **gitleaks** | quick | committed secrets | catches a key before it leaves your machine (toothless without default rules) | ★★★★☆ |
-| **Kani** (CBMC) | quick | arithmetic / structural invariants on bounded, total functions | proves a property over *every* in-range input, not a sample | ★★★☆☆ |
-| **TLA+ / TLC** | full | spec-level concurrency / protocol errors; vacuous invariants | model-checks the protocol's reachable states; the spec is generated from the code | ★★★☆☆ |
-| **TSAN** | full | real-thread data races (UB) | the one axis Loom can't model — the production threading stack | ★★★☆☆ |
-| **cargo-fuzz** | full | panics/crashes on arbitrary raw input | coverage-guided bytes into parsers/decoders; a crash persists as a replay | ★★★☆☆ |
-| **cucumber** (BDD) | quick | HTTP-/externally-observable behaviour | executable acceptance criteria; the human-readable traceability anchor | ★★★☆☆ |
-| **Miri** | full | memory UB (invalid transmute, OOB, UAF) | interprets under a UB-detecting machine; insurance for any `unsafe` | ★★☆☆☆ |
+| **cargo-llvm-cov** | quick | untested regions of the verified core | the quantitative adequacy floor under the test suite | ★★★★☆ |
+| **cargo-mutants** | full | weak tests (logic inverted, tests still green) | proves the suite kills bugs, not just executes lines | ★★★★☆ |
+
+**Proofs of the pure core — exhaustive, not sampled**
+
+| Tool | Tier | Catches | How it helps | ★ |
+|---|---|---|---|---|
+| **Kani** (CBMC) | quick | arithmetic / structural invariants on bounded, total functions | proves a property over _every_ in-range input | ★★★☆☆ |
 | **Verus** (Z3) | full | unbounded ∀ / nonlinear postconditions | the deductive twin of Kani, where bounded checking can't close it | ★★☆☆☆ |
-| **machete / outdated / geiger** | quick/full | unused deps; stale deps; unsafe-surface trend | hygiene; `outdated`/`geiger` advise, never block | ★★ |
+
+**Concurrency & protocol — the bugs that are about _schedules_, not inputs**
+
+| Tool | Tier | Catches | How it helps | ★ |
+|---|---|---|---|---|
+| **TLA+ / TLC** | full | spec-level concurrency / protocol errors; vacuous invariants | model-checks the protocol's reachable states; the spec is generated from the code | ★★★☆☆ |
+| **DST** (turmoil) | quick | full-stack multi-step / network / fault-injection sequences | drives the real app over a simulated network; replays any failure from a seed | ★★★★☆ |
+| **Loom** | full | in-memory data races / lost updates | exhausts every thread interleaving of a shared-memory pattern | ★★★★☆ |
+| **TSAN** | full | real-thread data races (UB) | the one axis Loom can't model — the production threading stack | ★★★☆☆ |
+
+**Memory safety & untrusted input**
+
+| Tool | Tier | Catches | How it helps | ★ |
+|---|---|---|---|---|
+| **Miri** | full | memory UB (invalid transmute, OOB, use-after-free) | interprets under a UB-detecting machine; insurance for any `unsafe` | ★★☆☆☆ |
+| **cargo-fuzz** | full | panics/crashes on arbitrary raw input | coverage-guided bytes into parsers/decoders; a crash persists as a replay | ★★★☆☆ |
 | `#![forbid(unsafe_code)]` | compile | any `unsafe` in shipped crates | a compile error, stronger than any audit | n/a |
 
-What follows is one example per tool: a snippet, and the error it catches.
+**Supply chain & secrets — risks compilation can't see**
 
-### clippy — the always-on floor
-Four lint levels (`all + pedantic + nursery + cargo`) plus a hand-picked
-restriction allowlist. It refuses whole bug classes at zero marginal cost.
+| Tool | Tier | Catches | How it helps | ★ |
+|---|---|---|---|---|
+| **cargo-deny** | quick | vulnerable / banned / bad-license dependencies | a supply-chain class the compiler never looks at | ★★★★☆ |
+| **gitleaks** | quick | committed secrets | catches a key before it leaves your machine (toothless without default rules) | ★★★★☆ |
+| **machete / outdated / geiger** | quick/full | unused deps; stale deps; unsafe-surface trend | hygiene; `outdated`/`geiger` advise, never block | ★★ |
+
+What follows is one example per tool — a snippet and the error it catches — in
+the same grouped order.
+
+#### Static floor
+
+**clippy** — four lint levels (`all + pedantic + nursery + cargo`) plus a
+hand-picked restriction allowlist. It refuses whole bug classes at zero marginal
+cost.
 
 ```rust
 let mut total = 0u32;
 for t in todos { total += weight(t.priority); }   // overflow on a large input
 ```
+
 ```
 error: arithmetic operation that can overflow
   = note: `-D clippy::arithmetic_side_effects`
 ```
+
 The fix is `fold(0, u32::saturating_add)`. The same restriction set rejects a
 panicking `OffsetDateTime - OffsetDateTime`, an unchecked `[i]`, a stray
-`.unwrap()`, and a lossy `as` cast — each before a single test runs.
+`.unwrap()`, and a lossy `as` cast — each before a single test runs. The
+**meta-gates** sit alongside it, checking that the spec, code, and docs still
+agree (see "Gates must have teeth").
 
-### proptest — laws over a thousand inputs
-Assert a *law*, not an example; on failure it shrinks to the minimal case.
+#### Behaviour & test quality
+
+**cucumber (BDD)** — each requirement's acceptance criterion, written in
+EARS-shaped Gherkin and run end-to-end as a test against the real service. It is
+how you state and check *behaviour* — what the system should do, in the
+requirement's own words — not merely an HTTP assertion.
+
+```gherkin
+Scenario: REQ-042 — over-budget create is rejected
+  Given a user at their per-second create limit
+  When the user POSTs another todo
+  Then the service shall respond 429 with a Retry-After header
+```
+
+```
+Step failed: expected status 429, got 200   (the limiter wasn't wired in)
+```
+
+Because the scenario is phrased like the requirement, a missing criterion *is* a
+failing or absent scenario — and `check-bdd-coverage` fails if a criterion has
+no scenario (or a `(verified=…)` marker backed by a real proof link).
+
+**proptest** — assert a _law_, not an example; on failure it shrinks to the
+minimal case.
 
 ```rust
 proptest! {
@@ -248,14 +303,28 @@ proptest! {
     }
 }
 ```
+
 ```
 Test failed: assertion failed. minimal failing input: now=.., due=now-12h
 ```
+
 An item overdue by 12 h reported `0` ("on time") — truncation toward zero, not
 floor. The example test only checked positive exact days and missed it.
 
-### Kani — proof over every bounded input
-Symbolic inputs (`kani::any()`), explored exhaustively within bounds.
+**cargo-llvm-cov** sets the coverage floor on the core; **cargo-mutants** then
+proves those tests have teeth — it mutates the *product* code and reruns the
+suite; a surviving mutant is a test that doesn't actually check that behaviour.
+
+```
+MISSED: replace `>` with `>=` in rate_limit.rs:42 — caught by 0 tests
+```
+
+The boundary `n == capacity` was never tested. Coverage was green; the mutant
+proved the test was hollow. Pin it with a `n == capacity` test.
+
+#### Proofs of the pure core
+
+**Kani** — symbolic inputs (`kani::any()`), explored exhaustively within bounds.
 
 ```rust
 #[kani::proof]
@@ -265,13 +334,14 @@ fn weight_is_bounded() {
     assert!(w >= 1 && w <= MAX_WEIGHT);   // ∀ priority, not a sample
 }
 ```
+
 ```
 SUMMARY: FAILED — assertion failed: w <= MAX_WEIGHT
   (a new Priority variant was added without updating MAX_WEIGHT)
 ```
 
-### Verus — proof over *all* integers
-Where the property is unbounded or nonlinear, the deductive (SMT) twin of Kani:
+**Verus** — where the property is unbounded or nonlinear, the deductive (SMT)
+twin of Kani:
 
 ```rust
 proof fn ceil_div_is_tight(n: nat, d: nat)
@@ -280,25 +350,29 @@ proof fn ceil_div_is_tight(n: nat, d: nat)
              (ceil_div(n, d) - 1) * d < n,   // … and tight, for ALL n, d
 { }
 ```
+
 Kani can only check a bounded slice of `n`; Verus closes the ∀.
 
-### TLA+ / TLC — model-check the protocol
-You write the *specification* of a state machine or concurrency protocol; TLC
-explores **all** reachable states for an invariant violation. For the lifecycle
-FSM you don't hand-write it — `dhx regen` generates it from `state.rs::next`, so
-the model checks the same transition table the code runs.
+#### Concurrency & protocol
+
+**TLA+ / TLC** — you write the _specification_ of a state machine or concurrency
+protocol; TLC explores **all** reachable states for an invariant violation. For
+the lifecycle FSM you don't hand-write it — `dhx regen` generates it from
+`state.rs::next`, so the model checks the same transition table the code runs.
 
 ```tla
 \* Archived is terminal: no event leaves it (REQ-001).
 ArchivedTerminal == (state = "Archived" => ~ ENABLED Next)
 ```
+
 ```
 Error: Invariant ArchivedTerminal is violated.
   state = "Archived" -> "Active"   \* a Reopen arm was wrongly allowed
 ```
+
 TLC prints the exact counterexample trace — the interleaving no unit test would
 have generated. And every invariant carries a mutation in `mutations.toml` that
-TLC is *required* to catch, so the invariant can't be vacuous:
+TLC is _required_ to catch, so the invariant can't be vacuous:
 
 ```toml
 [[mutations]]              # flip the guard; TLC MUST report ArchivedTerminal
@@ -307,24 +381,25 @@ replace = "(state = \"Archived\" => ENABLED Next)"
 expect  = "ArchivedTerminal"
 ```
 
-### DST — the real app, simulated and replayable
-Deterministic Simulation Testing runs the actual service over a `turmoil`
-network with a mocked clock and a seeded shadow oracle, driving multi-step
-sequences and faults.
+**DST** — Deterministic Simulation Testing runs the actual service over a
+`turmoil` network with a mocked clock and a seeded shadow oracle, driving
+multi-step sequences and faults.
 
 ```sh
 dhx dst --seed 42 --iterations 20000     # reproducible regression
 dhx dst --seed random                    # discovery; prints the seed to replay
 ```
+
 ```
 DST FAILED (seed=42): after create→patch→delete, version went 1 → 1 (expected 2)
   reproduce: dhx dst --seed 42
 ```
-A version-arithmetic bug visible only across a *sequence* of operations — found
+
+A version-arithmetic bug visible only across a _sequence_ of operations — found
 by entropy, then pinned forever by its seed.
 
-### Loom — every thread interleaving
-Exhaustively enumerates the schedules of a shared-memory pattern.
+**Loom** — exhaustively enumerates the thread schedules of a shared-memory
+pattern.
 
 ```rust
 loom::model(|| {
@@ -333,87 +408,72 @@ loom::model(|| {
     assert_eq!(final_value, 2);   // holds under EVERY interleaving?
 });
 ```
+
 ```
 thread panicked: assertion failed (a lost update under one schedule)
 ```
+
 A non-atomic counter loses an update on exactly one of the interleavings Loom
 tries — invisible to a single-threaded test, which only ever sees one schedule.
 
-### TSAN — races on the real threading stack
-What Loom can't model (the production runtime). Recompiles std with the thread
-sanitizer.
+**TSAN** — what Loom can't model (the production runtime). Recompiles std with
+the thread sanitizer.
 
 ```
 WARNING: ThreadSanitizer: data race
   Write of size 4 by thread T2 ... in core::ptr::write
 ```
-A non-atomic shared write *usually* produces the right total on a quiet machine
+
+A non-atomic shared write _usually_ produces the right total on a quiet machine
 (so the test is green and ships); TSAN reports the race regardless of schedule.
 
-### Miri — undefined behaviour
-Interprets the program under a machine that detects UB.
+#### Memory safety & untrusted input
+
+**Miri** — interprets the program under a machine that detects UB.
 
 ```rust
 let p: Priority = unsafe { std::mem::transmute(7u8) };   // 7 is not a variant
 ```
+
 ```
 error: Undefined Behavior: constructing an invalid value:
   encountered 0x07, but expected a valid enum tag
 ```
-Green under `cargo build` and the happy-path test; only a UB checker sees it.
 
-### cargo-fuzz — panics on arbitrary input
-Coverage-guided mutated bytes into a parser; a crash is saved as a replay.
+Green under `cargo build` and the happy-path test; only a UB checker sees it.
+(`#![forbid(unsafe_code)]` keeps shipped crates out of this territory in the
+first place — a compile error if `unsafe` appears.)
+
+**cargo-fuzz** — coverage-guided mutated bytes into a parser; a crash is saved
+as a replay.
 
 ```rust
 fuzz_target!(|data: &str| { let _ = parse_bulk_import(data); });
 ```
+
 ```
 thread panicked: 'attempt to subtract with overflow'   (input: "\x0e")
   Test unit written to fuzz/artifacts/.../crash-3203...
 ```
+
 A hand-indexed parser underflows on a leading control byte — found in under a
 second.
 
-### cargo-mutants — does the suite have teeth?
-Mutates the *product* code and reruns the tests; a surviving mutant is a test
-that doesn't actually check that behaviour.
+#### Supply chain & secrets
 
-```
-MISSED: replace `>` with `>=` in rate_limit.rs:42 — caught by 0 tests
-```
-The boundary `n == capacity` was never tested. Coverage was green; the mutant
-proved the test was hollow. Pin it with a `n == capacity` test.
+**cargo-deny** rejects a non-allowlisted license or a RUSTSEC advisory;
+**gitleaks** catches a committed secret (it is _silently toothless_ without
+`useDefault = true` — a real incident the harness fixed); **machete** flags a
+dependency you declared but never used. None of these is visible to compilation.
 
-### cucumber (BDD) — executable acceptance criteria
-A requirement criterion, written in EARS-shaped Gherkin, run as a test. The
-human-readable anchor that `check-bdd-coverage` ties back to each `REQ-NNN`.
-
-```gherkin
-Scenario: REQ-042 — over-budget create is rejected
-  Given a user at their per-second create limit
-  When the user POSTs another todo
-  Then the service shall respond 429 with a Retry-After header
-```
-```
-Step failed: expected status 429, got 200   (the limiter wasn't wired in)
-```
-The behaviour is stated the way the requirement is, so a missing criterion is a
-failing scenario — and `check-bdd-coverage` fails if a criterion has no
-scenario (or a `(verified=…)` marker backed by a real proof link).
-
-### cargo-deny / gitleaks / machete — the supply-chain & secret floor
 ```
 error[rejected]: failed to satisfy license requirements
   license = "WTFPL"   rejected: not explicitly allowed   (terminfo v0.9.0)
 ```
+
 ```
 gitleaks: leaked credential — generic-api-key at src/config.rs:12
 ```
-cargo-deny rejects a non-allowlisted license or a RUSTSEC advisory; gitleaks
-catches a committed secret (it is *silently toothless* without `useDefault =
-true` — a real incident the harness fixed); machete flags a dependency you
-declared but never used. None of these is visible to compilation.
 
 ---
 
@@ -421,7 +481,7 @@ declared but never used. None of these is visible to compilation.
 
 - **No silently-toothless gate.** Input present but unconfigured ⇒ fail loudly,
   never skip. This is the project's defining invariant.
-- **Pins are the single version authority.** The Docker image is built *from*
+- **Pins are the single version authority.** The Docker image is built _from_
   `.harness/pins/*`; there is no second source to drift.
 - **One tool per bug class; route, don't spray.** A cheap always-on floor plus
   heavy instruments aimed where the bug-surface is.
