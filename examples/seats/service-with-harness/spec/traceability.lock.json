@@ -1,0 +1,6 @@
+{
+  "REQ-001": [
+    "When the requested amount is at most the remaining budget the system shall grant the full request",
+    "When the requested amount exceeds the remaining budget the system shall grant only the remaining amount"
+  ]
+}
