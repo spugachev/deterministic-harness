@@ -1,0 +1,27 @@
+# Anti-vacuity mutations for the generated Lifecycle spec. Each entry perturbs
+# the spec so a named invariant MUST be violated; if TLC still passes, the
+# invariant was vacuous. `expect` NAMES the invariant the mutation should break
+# (this is what `check-mutation-coverage` credits).
+
+[[mutations]]
+spec      = "Lifecycle"
+label     = "terminal-state-can-transition"
+invariant = "ArchivedTerminal"
+expect    = "ArchivedTerminal"
+# Let a Confirmed hold transition again: terminal states would no longer be
+# terminal, so ArchivedTerminal must catch it.
+find      = '''Confirm ==
+    \/ (state = "Held" /\ state' = "Confirmed")'''
+replace   = '''Confirm ==
+    \/ (state = "Held" /\ state' = "Confirmed")
+    \/ (state = "Confirmed" /\ state' = "Held")'''
+
+[[mutations]]
+spec      = "Lifecycle"
+label     = "transition-to-illegal-state"
+invariant = "TypeInvariant"
+expect    = "TypeInvariant"
+# Send a hold to a state that is not one of the declared States; TypeInvariant
+# must catch the out-of-domain value.
+find      = '''(state = "Held" /\ state' = "Confirmed")'''
+replace   = '''(state = "Held" /\ state' = "Bogus")'''

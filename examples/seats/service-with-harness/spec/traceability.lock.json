@@ -1,0 +1,26 @@
+{
+  "REQ-001": [
+    "When a client requests N seats and at least N seats are available the service shall grant a hold with a unique id and a TTL",
+    "When a client requests N seats and fewer than N are available the service shall reject the hold for insufficient availability (verified=kani)",
+    "When a client requests zero seats the service shall reject the hold"
+  ],
+  "REQ-002": [
+    "When a client confirms a hold that is live the service shall permanently book its seats",
+    "When a client confirms a hold that is expired unknown or already confirmed the service shall reject the confirmation (verified=proptest)"
+  ],
+  "REQ-003": [
+    "When a client releases a live unconfirmed hold the service shall return its seats to available",
+    "When a client releases an expired or unknown hold the service shall treat it as a no-op (verified=proptest)"
+  ],
+  "REQ-004": [
+    "While a hold has not been confirmed within its TTL the service shall automatically free its seats based on the current time (verified=proptest)",
+    "When the current time reaches a hold's expiry instant the service shall no longer count its seats as held"
+  ],
+  "REQ-005": [
+    "While the service runs the sum of confirmed and currently-held seats shall never exceed the event capacity (verified=kani)",
+    "When two clients race for the last seats the service shall not grant both holds (verified=dst)"
+  ],
+  "REQ-006": [
+    "When a client queries availability the service shall report capacity minus confirmed minus currently-held seats (verified=proptest)"
+  ]
+}

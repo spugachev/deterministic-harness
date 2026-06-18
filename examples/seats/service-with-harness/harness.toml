@@ -1,0 +1,38 @@
+# The one project-specific manifest dhx reads. Keys equal to dhx's built-in
+# defaults are omitted (so `dhx config explain` shows them as "(default)").
+# See: dhx config explain <gate>.
+
+[meta]
+schema_version = 1
+
+[project]
+name = "seats"
+
+[coverage]
+# The verified-core crate(s) held to the high coverage bar; everything else in
+# the workspace is excluded from the report. REQUIRED.
+core = ["core"]
+
+[targets]
+# Role assignments cargo metadata can't infer. The starter scaffold is
+# core-only, so the nightly/concurrency gates point at `core`. As you add a
+# concurrency adapter crate or an integration-test crate, repoint these (and add
+# `dst = { crate = "...", test = "..." }`, `fuzz = ["..."]`).
+tsan = "core"
+loom = "core"
+# The deterministic simulation: `cargo test -p api --test dst`. Drives the
+# mutex-serialized service over a seeded simulated world (concurrent holds racing
+# for the last seat). Verifies REQ-005 end to end.
+dst = { crate = "api", test = "dst" }
+# pins live at .harness/pins/<name>.txt by convention (no [pins] table).
+
+# The hold lifecycle IS a state machine: `domain::hold::next` is the pure
+# `fn next(State, Event) -> Option<State>`. `dhx regen` projects it to
+# spec/tla/Lifecycle.{tla,cfg}; TLC model-checks it and each invariant has an
+# anti-vacuity entry in spec/tla/mutations.toml.
+[fsm]
+source         = "crates/core/src/domain/hold.rs"
+fn_name        = "next"
+state_enum     = "State"
+event_enum     = "Event"
+generated_stem = "Lifecycle"
