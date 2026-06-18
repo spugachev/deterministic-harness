@@ -10,6 +10,13 @@ type checking, property tests, model checking, bounded and deductive proofs,
 simulation, race detectors — can each catch the bug it is responsible for, and
 one CLI runs them all locally.
 
+The question that follows you the whole way: does a stack this deep earn its
+keep, or is it ceremony? To answer it honestly the same domain was built twice —
+once bare and once on the harness — across three problems chosen to climb a
+ladder of difficulty: an atomic seat counter, integer conservation in a ledger,
+and Raft consensus. The verdict — and what it implies for how to spend the
+expensive tools — is deferred to the trilogy at the end.
+
 ---
 
 ## How
@@ -176,11 +183,9 @@ bottom, empirical ground truth from benchmarks and telemetry. Underneath all of
 it, on every edit at nearly no cost, runs the floor — clippy, property tests,
 and the intent-drift meta-gates.
 
-The hard-won finding behind this shape is that **payoff tracks a feature's
-bug-surface, not the effort spent on it.** The harness earns its keep
-decisively on arithmetic, boundaries, dates, concurrency, undefined behaviour,
-and untrusted input — and is honest dead weight on flat CRUD. Knowing which is
-which is the entire craft.
+Routing is a claim, not a given, and the A/B trilogy at the end is where it is
+measured — the same domain built twice, once bare and once on the harness, across
+three problems of rising difficulty.
 
 ### The architecture that makes it work
 
@@ -212,12 +217,13 @@ be evolved.
 
 One tool per bug class: each catches a class **no other tool catches**, so a
 duplicate would only add wall-clock and "which one is authoritative?" arguments
-for no safety gain. The tables read top to bottom in the order a developer
-should meet the tools — the cheap, broad floor first, then progressively more
-specialised instruments, grouped by the question each answers. "Tier" is the
-cheapest tier the tool runs in; ★ is practical bug-catching ROI (from A/B
-studies and planted-defect probes on the prototype this harness came from), not
-raw capability.
+for no safety gain. To find the tool for a bug you have in mind, scan the bold
+group headings (the question each cluster answers) and then the **Catches**
+column within. The tables read top to bottom in the order a developer should
+meet the tools — the cheap, broad floor first, then progressively more
+specialised instruments. "Tier" is the cheapest tier the tool runs in; ★ is
+practical bug-catching ROI (from A/B studies and planted-defect probes on the
+prototype this harness came from), not raw capability.
 
 **Static floor — runs on every edit, ~free**
 
@@ -399,7 +405,7 @@ multi-step sequences and faults.
 
 ```sh
 dhx dst --seed 42 --iterations 20000     # reproducible regression
-dhx dst --seed random                    # discovery; prints the seed to replay
+dhx verify --full                        # discovery; a random seed is printed to replay
 ```
 
 ```
@@ -494,30 +500,64 @@ gitleaks: leaked credential — generic-api-key at src/config.rs:12
 
 ---
 
-## Does it actually catch bugs? An A/B run
+## Does it actually catch bugs? The A/B trilogy
 
-To check the harness earns its keep rather than just feeling rigorous, the same
-five features were built twice by the same agent (`claude -p`): once **OFF** — a
-plain `cargo` library, "make it compile, one smoke test, ship it" — and once
-**ON** — a `dhx init` project run through the full workflow (REQ → implement →
-tests + a property law → `dhx check` green). Each OFF arm's latent bug was then
-found _empirically_, by running one hostile input the smoke test skipped.
+The method is built-twice, OFF versus ON: three domains were each built **twice**
+by independent headless agents (`claude -p`):
+once **OFF** — bare `cargo`, "make it compile, one smoke test, ship it fast" —
+and once **ON** — a `dhx init` project taken to green gates. Each OFF arm was
+then probed adversarially for the latent bug its single smoke test missed. The
+three were chosen to climb the bug-surface ladder on purpose: an atomic counter,
+then integer conservation, then distributed consensus.
 
-| Feature                 | OFF shipped                 | Smoke | The bug (found by probing)                    | ON shipped                 | Caught by           |
-| ----------------------- | --------------------------- | ----- | --------------------------------------------- | -------------------------- | ------------------- |
-| `workload(&[u32])` sum  | `iter().sum()`              | ✅    | `[u32::MAX; 2]` → **overflow panic**          | `fold(0, saturating_add)`  | clippy + proptest   |
-| `blend(a,b,wa)` average | `100 - wa`                  | ✅    | `wa = 200` → **subtract-overflow panic**      | clamped `saturating_sub`   | clippy + proptest   |
-| `due_in_days`           | `(due-now)/86400`           | ✅    | overdue 12 h → **returns `0`, not `-1`**      | `div_euclid` (floor)       | proptest            |
-| `parse_line`            | `chars().next()` / `splitn` | ✅    | `"noseparator"` → **silently drops the text** | `-> Result<_, ParseError>` | proptest + the type |
-| `RingBuf` fixed cap     | correct                     | ✅    | _none_                                        | same + invariant           | — (fair tie)        |
+| Domain   | Hardest question     | OFF (ship-it-fast)             | OFF's latent bug                                              | ON adds                                          | Verdict             |
+| -------- | -------------------- | ------------------------------ | ------------------------------------------------------------ | ------------------------------------------------ | ------------------- |
+| `seats`  | capacity (atomic)    | 145 s / 2 files / 1 test       | _none_ — `Mutex` + guard is correct, expiry stays testable   | 13 files, 25 tests, 2 Kani proofs, TLC, DST      | **overhead**        |
+| `ledger` | conservation (money) | 195 s / 1 file / 1 test        | recipient `to + amount` **u64 overflow** — panic / silent money loss | `checked_add`/`checked_sub` + a Kani conservation proof | **caught a bug**    |
+| `raft`   | consensus (protocol) | 279 s / 989 LOC / 1 smoke test | new leader **never commits** its own writes — cluster wedges after any failover | §5.4.2 commit rule, 6 Kani proofs, DST, TLA+, fuzz | **indispensable**   |
 
-**OFF shipped 4 real defects across 5 features; the smoke tests caught 0 of 4.
-ON shipped none**, each reaching a green `dhx check`. The wins were exactly where
-theory predicts — arithmetic, a boundary, a date sign, a parse — and the fifth
-feature (a plain ring buffer, no boundary as its hardest question) was an honest
-tie. The harness did not make the agent smarter; it changed what counts as
-"done," and that bar is what forced `saturating_add`, `div_euclid`, clamping,
-and a `Result`.
+**`seats`** — the atomic counter. A careful build gets it right: the global
+`Mutex` plus a guard genuinely upholds the capacity invariant, and expiry is
+testable through a `now`-parameter. ON spent 51 minutes and shipped 13 files, 25
+tests, two scalar Kani proofs, a TLC model, and a DST suite — all green, none of
+it catching anything. Honest dead weight: proof-and-coverage insurance on a
+domain whose hardest question a thoughtful author already answers.
+
+**`ledger`** — integer conservation. OFF shipped a real bug that passed its own
+review: recipient-side `to + amount` overflows `u64`, "defended" by a
+confident-but-false comment (_"can't overflow, total fits in u64"_) while
+`open_account` enforces no supply bound at all — a debug panic, or in release a
+**silent destruction of money**. ON replaced the arithmetic with
+`checked_add`/`checked_sub` and added a _tractable_ scalar Kani proof over all
+`u64` triples that conservation holds for every input the bug could ever see. A
+review-passing arithmetic bug, caught.
+
+**`raft`** — distributed KV with Raft consensus, and the strongest single proof
+point. OFF compiled, the demo worked, and it had **zero** safety coverage.
+Adversarial probing found a genuine consensus bug: **after a leader change, the
+new leader — holding a full majority — never commits its own writes**
+(`commit_index` stuck at `0`), so the cluster permanently wedges after any
+failover. This is the classic Raft §5.4.2 hazard: a leader may only advance the
+commit index by replica count for entries _in its current term_. ON (37.5 min,
+3126 LOC) encoded that rule in `decide.rs`, backed it with six scalar Kani
+proofs over all `u64` (no OOM) and a TLA+ role FSM, drove a DST that partitions a
+minority and heals it — asserting majority-commits, minority-can't, no lost
+writes — added a fuzzed parser, and passed 59/59 native tests. (Re-verification
+note: the 59/59 native suite, including the five DST partition tests, and the
+presence of the §5.4.2 rule were re-checked independently; the Kani proofs and
+TLC were confirmed by the agent's green gate run plus source reading, not
+re-executed here, because a host Docker sign-in lock blocked re-running the dhx
+gates.) Spec-first did not make the agent smarter; it made the agent **encode
+the correct commit rule from the start** — the precise rule OFF lacked.
+
+**The trilogy confirms the thesis: payoff tracks a feature's bug-surface, not
+the ceremony applied to it.** As the hardest question moves from an atomic
+counter to integer conservation to distributed consensus, the harness moves from
+honest overhead, to catching a review-passing bug, to the difference between a
+demo that runs and a cluster that survives a leader change. Knowing which of
+those domains you are in — and spending the expensive tools (TLA+/DST/Kani) only
+where the difficulty actually lives — is the craft. Full write-ups live at
+`examples/{seats,ledger,raft}/COMPARISON.md`.
 
 ---
 
@@ -543,9 +583,9 @@ mandatory, inert embedded assets).
 
 ## Further reading
 
-The "harness over model" thesis is not unique to this project; it is a
-convergence several teams reached independently. The works that most directly
-shaped the approach here:
+The "harness over model" thesis is not unique to this project; several teams
+reached it independently. If you take one idea from this README onward, these
+are the works that shaped it and are worth reading in full:
 
 - Datadog — [_Closing the verification loop: observability-driven harnesses for
   building with agents_](https://www.datadoghq.com/blog/ai/harness-first-agents/)
