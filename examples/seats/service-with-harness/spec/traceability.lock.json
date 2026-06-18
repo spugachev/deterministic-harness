@@ -1,6 +1,30 @@
 {
   "REQ-001": [
-    "When the requested amount is at most the remaining budget the system shall grant the full request",
-    "When the requested amount exceeds the remaining budget the system shall grant only the remaining amount"
+    "When at least N seats are free the service shall grant a hold for N seats with a unique id and a TTL",
+    "When fewer than N seats are free the service shall reject the hold for N seats",
+    "The confirmed plus currently-held seats shall never exceed the venue capacity (verified=kani)"
+  ],
+  "REQ-002": [
+    "While a hold is Held the system shall allow exactly one of confirm, release, or expire",
+    "When a hold has reached a terminal state the system shall reject every further lifecycle event (verified=tla)"
+  ],
+  "REQ-003": [
+    "When a client confirms a live hold by id the system shall book its seats permanently",
+    "When a client confirms an expired, unknown, or already-confirmed hold the system shall reject the confirmation"
+  ],
+  "REQ-004": [
+    "When a client releases an unconfirmed hold by id the system shall return its seats to available",
+    "When a client releases an unknown or already-expired hold the system shall treat it as a no-op (verified=proptest)"
+  ],
+  "REQ-005": [
+    "When a hold is not confirmed within its TTL the system shall free its seats automatically",
+    "While a hold is within its TTL the system shall keep its seats reserved (verified=proptest)"
+  ],
+  "REQ-006": [
+    "When a client queries availability the system shall report capacity minus confirmed and currently-held seats"
+  ],
+  "REQ-007": [
+    "When multiple clients race for the last seats the system shall grant at most the seats that remain (verified=dst)",
+    "The service shall serialize every operation so the no-overbooking invariant holds under concurrency"
   ]
 }

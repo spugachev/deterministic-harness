@@ -1,60 +1,66 @@
-//! Seat-reservation service for a single event with a fixed seat capacity.
+//! Seat-reservation service for a single event with fixed capacity.
 //!
-//! In-memory store guarded by a `Mutex`, exposed over an axum HTTP API:
-//!   POST /holds            { "seats": N }            -> grant or reject a hold
-//!   POST /holds/:id/confirm                          -> confirm a hold
-//!   POST /holds/:id/release                          -> release a hold (idempotent)
-//!   GET  /availability                               -> seats currently available
-//!
-//! Holds expire after a fixed TTL; expiry is evaluated lazily against the
-//! current time whenever the store is touched.
+//! In-memory store guarded by a `Mutex`, exposed over an axum HTTP API.
+//! Holds expire lazily (TTL checked against the current time on every access).
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use axum::{
+    Json, Router,
     extract::{Path, State},
     http::StatusCode,
+    response::IntoResponse,
     routing::{get, post},
-    Json, Router,
 };
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-/// Total seats for the event.
 const CAPACITY: u32 = 100;
-/// How long a hold lives before it expires and frees its seats.
 const HOLD_TTL: Duration = Duration::from_secs(120);
 
-/// A pending (unconfirmed) hold on some seats.
+/// An unconfirmed reservation of `seats` seats that expires at `expires_at`.
+#[derive(Clone, Copy)]
 struct Hold {
     seats: u32,
     expires_at: Instant,
 }
 
-/// The whole reservation state behind one lock.
-#[derive(Default)]
+/// The full reservation state for the event.
 struct Store {
+    capacity: u32,
+    /// Seats that are permanently booked.
     confirmed: u32,
+    /// Live holds keyed by id.
     holds: HashMap<Uuid, Hold>,
 }
 
 impl Store {
-    /// Drop any holds whose TTL has elapsed. Called before every read/write so
-    /// expired seats are always treated as available.
-    fn sweep_expired(&mut self, now: Instant) {
+    fn new(capacity: u32) -> Self {
+        Self {
+            capacity,
+            confirmed: 0,
+            holds: HashMap::new(),
+        }
+    }
+
+    /// Drop any holds whose TTL has elapsed as of `now`.
+    fn expire(&mut self, now: Instant) {
         self.holds.retain(|_, h| h.expires_at > now);
     }
 
-    /// Seats neither confirmed nor currently held.
+    /// Seats currently spoken for: confirmed + all live holds.
+    fn in_use(&self) -> u32 {
+        self.confirmed + self.holds.values().map(|h| h.seats).sum::<u32>()
+    }
+
     fn available(&self) -> u32 {
-        let held: u32 = self.holds.values().map(|h| h.seats).sum();
-        CAPACITY - self.confirmed - held
+        self.capacity - self.in_use()
     }
 }
 
-type AppState = Arc<Mutex<Store>>;
+type SharedStore = Arc<Mutex<Store>>;
 
 #[derive(Deserialize)]
 struct HoldRequest {
@@ -88,24 +94,17 @@ fn err(status: StatusCode, msg: &str) -> (StatusCode, Json<ErrorResponse>) {
     )
 }
 
-/// POST /holds — grant a hold for N seats if enough are available.
-async fn create_hold(
-    State(store): State<AppState>,
-    Json(req): Json<HoldRequest>,
-) -> Result<(StatusCode, Json<HoldResponse>), (StatusCode, Json<ErrorResponse>)> {
+async fn hold(State(store): State<SharedStore>, Json(req): Json<HoldRequest>) -> impl IntoResponse {
     if req.seats == 0 {
-        return Err(err(StatusCode::BAD_REQUEST, "seats must be greater than 0"));
+        return err(StatusCode::BAD_REQUEST, "must request at least one seat").into_response();
     }
 
     let now = Instant::now();
     let mut store = store.lock().unwrap();
-    store.sweep_expired(now);
+    store.expire(now);
 
     if req.seats > store.available() {
-        return Err(err(
-            StatusCode::CONFLICT,
-            "insufficient availability for requested seats",
-        ));
+        return err(StatusCode::CONFLICT, "insufficient availability").into_response();
     }
 
     let hold_id = Uuid::new_v4();
@@ -117,137 +116,133 @@ async fn create_hold(
         },
     );
 
-    Ok((
+    (
         StatusCode::CREATED,
         Json(HoldResponse {
             hold_id,
             seats: req.seats,
             ttl_seconds: HOLD_TTL.as_secs(),
         }),
-    ))
+    )
+        .into_response()
 }
 
-/// POST /holds/:id/confirm — turn a live hold into a permanent booking.
-async fn confirm_hold(
-    State(store): State<AppState>,
-    Path(id): Path<Uuid>,
-) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
+async fn confirm(State(store): State<SharedStore>, Path(hold_id): Path<Uuid>) -> impl IntoResponse {
     let now = Instant::now();
     let mut store = store.lock().unwrap();
-    store.sweep_expired(now);
+    store.expire(now);
 
-    match store.holds.remove(&id) {
-        Some(hold) => {
-            store.confirmed += hold.seats;
-            Ok(StatusCode::OK)
+    match store.holds.remove(&hold_id) {
+        Some(h) => {
+            store.confirmed += h.seats;
+            StatusCode::OK.into_response()
         }
-        None => Err(err(
-            StatusCode::CONFLICT,
-            "hold is unknown, expired, or already confirmed",
-        )),
+        None => {
+            err(StatusCode::CONFLICT, "unknown, expired, or already-confirmed hold").into_response()
+        }
     }
 }
 
-/// POST /holds/:id/release — free an unconfirmed hold. Idempotent: releasing an
-/// unknown/expired hold is a no-op success.
-async fn release_hold(State(store): State<AppState>, Path(id): Path<Uuid>) -> StatusCode {
+async fn release(State(store): State<SharedStore>, Path(hold_id): Path<Uuid>) -> impl IntoResponse {
     let now = Instant::now();
     let mut store = store.lock().unwrap();
-    store.sweep_expired(now);
-    store.holds.remove(&id);
+    store.expire(now);
+
+    // Releasing an unknown/expired hold is an idempotent no-op.
+    store.holds.remove(&hold_id);
     StatusCode::NO_CONTENT
 }
 
-/// GET /availability — how many seats are currently free.
-async fn availability(State(store): State<AppState>) -> Json<AvailabilityResponse> {
+async fn availability(State(store): State<SharedStore>) -> impl IntoResponse {
     let now = Instant::now();
     let mut store = store.lock().unwrap();
-    store.sweep_expired(now);
+    store.expire(now);
+
     Json(AvailabilityResponse {
         available: store.available(),
-        capacity: CAPACITY,
+        capacity: store.capacity,
     })
 }
 
-fn app(state: AppState) -> Router {
+fn app(store: SharedStore) -> Router {
     Router::new()
-        .route("/holds", post(create_hold))
-        .route("/holds/:id/confirm", post(confirm_hold))
-        .route("/holds/:id/release", post(release_hold))
+        .route("/holds", post(hold))
+        .route("/holds/{hold_id}/confirm", post(confirm))
+        .route("/holds/{hold_id}", axum::routing::delete(release))
         .route("/availability", get(availability))
-        .with_state(state)
+        .with_state(store)
 }
 
 #[tokio::main]
 async fn main() {
-    let state: AppState = Arc::new(Mutex::new(Store::default()));
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:3000")
-        .await
-        .unwrap();
+    let store: SharedStore = Arc::new(Mutex::new(Store::new(CAPACITY)));
+    let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
     println!(
         "seats service listening on {}",
         listener.local_addr().unwrap()
     );
-    axum::serve(listener, app(state)).await.unwrap();
+    axum::serve(listener, app(store)).await.unwrap();
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use axum::body::Body;
+    use axum::http::Request;
+    use http_body_util::BodyExt;
+    use tower::ServiceExt;
 
-    /// Happy-path smoke test over the real HTTP API: hold 2 seats, confirm
-    /// them, and verify availability drops from CAPACITY to CAPACITY - 2.
+    /// Happy path: hold 3 seats, then confirm them; availability reflects each step.
     #[tokio::test]
-    async fn hold_confirm_flow_books_seats() {
-        let state: AppState = Arc::new(Mutex::new(Store::default()));
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let addr = listener.local_addr().unwrap();
-        tokio::spawn(async move {
-            axum::serve(listener, app(state)).await.unwrap();
-        });
+    async fn hold_then_confirm_books_seats() {
+        let store: SharedStore = Arc::new(Mutex::new(Store::new(CAPACITY)));
+        let app = app(store);
 
-        let client = reqwest::Client::new();
-        let base = format!("http://{addr}");
-
-        // Start with the full house available.
-        let avail: AvailabilityResponse = client
-            .get(format!("{base}/availability"))
-            .send()
-            .await
-            .unwrap()
-            .json()
-            .await
-            .unwrap();
-        assert_eq!(avail.available, CAPACITY);
-
-        // Hold 2 seats.
-        let resp = client
-            .post(format!("{base}/holds"))
-            .json(&serde_json::json!({ "seats": 2 }))
-            .send()
+        // Hold 3 seats.
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::post("/holds")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"seats":3}"#))
+                    .unwrap(),
+            )
             .await
             .unwrap();
         assert_eq!(resp.status(), StatusCode::CREATED);
-        let hold: HoldResponse = resp.json().await.unwrap();
-        assert_eq!(hold.seats, 2);
+        let body = resp.into_body().collect().await.unwrap().to_bytes();
+        let held: HoldResponse = serde_json::from_slice(&body).unwrap();
+        assert_eq!(held.seats, 3);
+
+        // Availability dropped by 3.
+        let resp = app
+            .clone()
+            .oneshot(Request::get("/availability").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        let body = resp.into_body().collect().await.unwrap().to_bytes();
+        let avail: AvailabilityResponse = serde_json::from_slice(&body).unwrap();
+        assert_eq!(avail.available, CAPACITY - 3);
 
         // Confirm the hold.
-        let resp = client
-            .post(format!("{base}/holds/{}/confirm", hold.hold_id))
-            .send()
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::post(format!("/holds/{}/confirm", held.hold_id))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
             .await
             .unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
 
-        // Two seats are now permanently booked.
-        let avail: AvailabilityResponse = client
-            .get(format!("{base}/availability"))
-            .send()
-            .await
-            .unwrap()
-            .json()
+        // Still 3 fewer available, now permanently booked.
+        let resp = app
+            .oneshot(Request::get("/availability").body(Body::empty()).unwrap())
             .await
             .unwrap();
-        assert_eq!(avail.available, CAPACITY - 2);
+        let body = resp.into_body().collect().await.unwrap().to_bytes();
+        let avail: AvailabilityResponse = serde_json::from_slice(&body).unwrap();
+        assert_eq!(avail.available, CAPACITY - 3);
     }
 }

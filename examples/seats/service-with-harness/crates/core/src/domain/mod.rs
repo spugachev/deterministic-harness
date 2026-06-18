@@ -1,6 +1,10 @@
-//! Pure domain. No IO, no async — put YOUR types and logic here.
+//! Pure domain for the seat-reservation service. No IO, no async.
 //!
-//! `example` is a throwaway seed (one pure function) that keeps the scaffold
-//! green out of the box and shows the spec→code→test shape. Delete it and add
-//! your own modules; the gates follow whatever REQs + scenarios you write.
-pub mod example;
+//! - [`seats`] — the capacity ledger ([`seats::SeatMap`]): hold / confirm /
+//!   release / available / expiry, with the no-overbooking invariant.
+//! - [`hold`] — the per-hold lifecycle FSM (`fn next`), projected to TLA+ by
+//!   `dhx regen` via the `[fsm]` section of `harness.toml`.
+//! - [`proofs`] — the `#[cfg(kani)]` no-overbooking proof harness.
+pub mod hold;
+pub mod proofs;
+pub mod seats;

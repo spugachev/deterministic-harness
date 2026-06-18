@@ -1,0 +1,35 @@
+# Anti-vacuity mutations for the generated Lifecycle spec. Each entry breaks one
+# invariant by a find/replace on Lifecycle.tla so TLC produces a counterexample
+# — proving the invariant is not vacuously true. `dhx tlc --mutate` applies each
+# in turn and fails if any mutation still passes (a check that can't fail is
+# toothless). Strings holding the TLA prime `state'` use triple-single-quoted
+# literals so the apostrophe-like prime survives the find/replace pair.
+#
+# Fields: `spec` = TLA module stem; `label` = mutation name (shown by
+# tlc --mutate); `invariant`/`expect` both name the invariant this mutation
+# proves non-vacuous (`check-mutation-coverage` matches each spec invariant to
+# an entry whose `expect` names it).
+
+# TypeInvariant (state \in States): redirect a transition to a value OUTSIDE
+# States, so `state \in States` must be violated and TLC reports it.
+[[mutations]]
+spec = "Lifecycle"
+label = "type-invariant-bogus-state"
+invariant = "TypeInvariant"
+expect = "TypeInvariant"
+find = '''(state = "Held" /\ state' = "Confirmed")'''
+replace = '''(state = "Held" /\ state' = "Bogus")'''
+
+# ArchivedTerminal (terminal states have no enabled action): add a transition
+# OUT of a terminal state, so a terminal state now has an enabled action and the
+# invariant must fail.
+[[mutations]]
+spec = "Lifecycle"
+label = "terminal-state-escape"
+invariant = "ArchivedTerminal"
+expect = "ArchivedTerminal"
+find = '''Confirm ==
+    \/ (state = "Held" /\ state' = "Confirmed")'''
+replace = '''Confirm ==
+    \/ (state = "Held" /\ state' = "Confirmed")
+    \/ (state = "Confirmed" /\ state' = "Held")'''

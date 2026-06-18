@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/core"]
+members = ["crates/core", "crates/api"]
 
 [workspace.package]
 edition      = "2021"
@@ -14,6 +14,10 @@ license      = "MIT OR Apache-2.0"
 warnings               = "deny"
 unsafe_op_in_unsafe_fn = "forbid"
 missing_docs           = "warn"
+# `cfg(kani)` (proofs) and `cfg(loom)` (concurrency models) are set by those
+# tools, not cargo — register them so plain `cargo clippy` doesn't warn
+# `unexpected_cfgs` on the gated modules.
+unexpected_cfgs        = { level = "warn", check-cfg = ['cfg(kani)', 'cfg(loom)'] }
 
 [workspace.lints.clippy]
 all      = { level = "deny", priority = -1 }

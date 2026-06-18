@@ -4,6 +4,20 @@ This is a **Deterministic Harness** project: a verified Rust service scaffolded
 by `dhx`. The verification toolchain is the whole quality story — there is no CI;
 the `dhx` gates run locally and are the entire gate.
 
+> **NEVER read or search the `dhx` tool's source (`harness/src/`, the
+> deterministic-harness repo).** It is the tool's internals, not your project's
+> contract — reading it teaches you nothing you can act on and is forbidden.
+> In a normal install it isn't even reachable: your project is standalone and the
+> gates run in a container where only your project is mounted. Stay inside THIS
+> project directory; do not `cd ..` out of it or `grep` parent directories.
+>
+> Everything you need to satisfy the gates — the exact `harness.toml` schema, the
+> REQ/marker/Kani conventions, the file paths — is in **"Contracts reference"**
+> below. Treat the gates as a black box: write code per the contracts, run
+> `dhx check`, and fix exactly what the gate output names. When you need a
+> template, copy the shipped `domain::example` + its `REQ-001` + `.feature` +
+> the `#[cfg(kani)]` proof — never the tool.
+
 ## Architecture precondition (why the gates have teeth)
 
 All non-determinism flows through **ports** (`crates/core/src/ports/`:
@@ -21,9 +35,123 @@ to delete and replace with your domain.
 ```
 harness.toml          the one manifest dhx reads (gates, targets, pins, fsm)
 .harness/             pins/, config/ (relocated tool configs), hooks/
-spec/                 requirements/ (REQ-NNN), adr/, tla/ (+ mutations.toml)
-crates/core/          the IO-free verified core: domain/ (the FSM), ports/
+spec/requirements/    REQ-NNN-*.md   (EARS acceptance criteria, frontmatter)
+spec/features/        *.feature      (EARS Gherkin, one+ scenario per REQ)
+spec/tla/             *.tla + *.cfg + mutations.toml (generated for an FSM)
+spec/adr/             ADR-NNNN-*.md  (architecture decisions)
+crates/core/          IO-free verified core: src/domain/, src/ports/, tests/bdd.rs
+crates/<outer>/       optional IO crates (axum/db) behind the ports
 ```
+
+## Contracts reference — write to THESE, don't read the tool
+
+Everything the gates require, with copy-paste forms. The shipped `domain::example`
+(REQ-001 + `spec/features/example.feature` + `crates/core/tests/bdd.rs`) is a
+working instance of every one of these — copy it.
+
+**`harness.toml` schema** (the only manifest; unknown keys are rejected):
+
+```toml
+[meta]
+schema_version = 1
+[project]
+name = "seats"
+[coverage]
+core = ["core"]              # crate(s) held to the coverage bar (default 90%)
+[targets]                    # all optional; omit a key to skip that gate
+tsan = "core"                # crate to run under ThreadSanitizer (--lib unit tests)
+loom = "core"                # crate with loom:: model tests (skips if it has none)
+dst  = { crate = "api", test = "dst" }   # `cargo test -p api --test dst`
+fuzz = ["parse_input"]       # fuzz target names under fuzz/fuzz_targets/
+[fsm]                        # ONLY if the domain is a state machine
+source = "crates/core/src/domain/<file>.rs"
+fn_name = "next"             # pure `fn next(State, Event) -> Option<State>`
+state_enum = "State"
+event_enum = "Event"
+generated_stem = "Lifecycle" # → spec/tla/Lifecycle.{tla,cfg}, made by `dhx regen`
+```
+
+**REQ frontmatter** (`spec/requirements/REQ-NNN-slug.md`):
+
+```markdown
+---
+id: REQ-001
+title: Holds never oversell the venue
+status: active
+acceptance:
+  - The service shall reject a hold when fewer than N seats are free.
+  - Confirming an expired hold shall fail. (verified=proptest)   # optional marker
+implements_in:                         # sub-keyed by technique; values are path lists
+  gherkin: [spec/features/holds.feature]
+  code: [crates/core/src/domain/seats.rs::hold]
+  tla: [spec/tla/Lifecycle.tla]        # only if you wrote a spec
+---
+Prose rationale here.
+```
+- `implements_in` keys are `gherkin` / `code` / `tla` / `kani` / `proptest` /
+  `dst`; a `code` entry may name a `file.rs::symbol`. `check-traceability`
+  requires each listed target to exist.
+- A `(verified=kani|proptest|dst|tla)` marker at the end of a criterion satisfies
+  *token-matching* for a non-HTTP-observable criterion — it does NOT remove the
+  need for a tagged BDD scenario (every REQ still needs one), and a marker token
+  must be backed by a matching `implements_in.<token>` entry.
+
+**BDD scenario** (`spec/features/*.feature`) — tag each with its REQ id:
+
+```gherkin
+Feature: Seat holds
+  Scenario: REQ-001 reject when full
+    Given a venue with 0 free seats
+    When a client requests 1 seat
+    Then the service shall reject the hold
+```
+
+**Kani proof** (in the core, behind `#[cfg(kani)]`). Kani is a BOUNDED model
+checker (CBMC): it proves a property over every value of *scalar* symbolic
+inputs. It is NOT for whole-program or collection-level proofs.
+
+> **CRITICAL — keep Kani tractable, or CBMC runs out of memory and the gate
+> fails (not a real counterexample, just OOM).** The #1 footgun is proving over a
+> **symbolic heap collection** (`Vec`/`HashMap`/`BTreeMap`) or looping symbolic
+> "steps" that mutate one — CBMC must model every allocation/branch and explodes.
+
+Do it the tractable way — **prove the invariant-preserving STEP on scalar
+state**, not a loop over a symbolic collection:
+
+```rust
+#[cfg(kani)]
+mod proofs {
+    use super::*;
+    // GOOD: a few scalar `kani::any()` inputs, pure arithmetic, no heap.
+    #[kani::proof]
+    fn hold_never_oversells() {
+        let capacity: u32 = kani::any();
+        let held: u32 = kani::any();
+        let req: u32 = kani::any();
+        kani::assume(held <= capacity);                 // the invariant, as a precondition
+        if let Some(new_held) = grant(capacity, held, req) {
+            assert!(new_held <= capacity);              // … preserved by the operation
+        }
+    }
+}
+```
+
+Rules that keep a proof from OOMing:
+- **No symbolic `Vec`/`HashMap`/`String`** in a proof. Model state as a few
+  scalars (counts, sums) and prove the per-operation transition preserves the
+  invariant. The full multi-step / collection behaviour is for **proptest + DST**,
+  not Kani.
+- Bound everything: `kani::assume(x <= SMALL)` on each input; add
+  `#[kani::unwind(N)]` with the smallest N that compiles if any loop remains.
+- If the domain inherently needs a collection, refactor the invariant into a
+  pure scalar function (e.g. `fn grant(capacity, held, req) -> Option<u32>`) and
+  prove THAT; keep the collection in the non-proof code path.
+- A Kani gate failure that mentions "CBMC failed / out of memory / unwinding /
+  foreign function" is a **tractability** problem, not a bug — shrink the proof.
+
+**Determinism ports** — domain code calls these, never `SystemTime::now` etc.:
+`Clock::now_unix() -> i64`, `Rng::next_u64() -> u64`, `IdGen::next_id() -> u64`.
+Tests use the shipped `FixedClock(i64)` / `SeqGen(u64)`. (See `crates/core/src/ports/`.)
 
 ## The methodology — spec-first, from specification to code to simulation
 

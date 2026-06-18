@@ -33,5 +33,5 @@ See `CLAUDE.md` for the architecture precondition and the dev loop.
 ## Status
 
 <!-- dhx:counts -->
-3 Gherkin scenario(s) across 1 feature file(s); requirements up to REQ-001.
+22 Gherkin scenario(s) across 7 feature file(s); requirements up to REQ-007.
 <!-- /dhx:counts -->
