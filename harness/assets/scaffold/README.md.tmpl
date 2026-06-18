@@ -16,7 +16,7 @@ dhx() { docker run --rm -v "$PWD":/work -w /work \
 
 dhx check            # every save: fmt, clippy, traceability, spec-sync, BDD coverage, …
 dhx verify --quick   # after small changes: + tests, proptest, coverage, Kani, TLA+/TLC, DST
-dhx verify --full    # after big changes / before release: + Miri, TSAN, mutants, fuzz, Loom
+dhx verify --full    # after big changes / before release: + TSAN, mutants, fuzz, Loom, multi-seed DST
 ```
 
 ## Layout

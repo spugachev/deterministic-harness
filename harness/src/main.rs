@@ -50,7 +50,7 @@ use tools::{
     test,
 };
 mod tools_heavy;
-use tools_heavy::{dst, dst_seeded, fuzz, loom_run, miri, tsan};
+use tools_heavy::{dst, dst_seeded, fuzz, loom_run, tsan};
 mod fsm;
 mod fsm_render;
 use fsm::regen;
@@ -150,7 +150,6 @@ enum Cmd {
         #[arg(long, default_value_t = 20_000)]
         runs: u32,
     },
-    Miri,
     Tsan,
     Loom,
     Dst {
@@ -227,7 +226,6 @@ fn main() -> Result<()> {
         Cmd::Kani => kani(&cfg),
         Cmd::CheckKaniCodegen => check_kani_codegen(&cfg),
         Cmd::Fuzz { target, runs } => fuzz(&cfg, target, runs),
-        Cmd::Miri => miri(&cfg),
         Cmd::Tsan => tsan(&cfg),
         Cmd::Loom => loom_run(&cfg),
         Cmd::Dst { seed, iterations } => dst(&cfg, seed, iterations),
@@ -267,9 +265,9 @@ fn verify_quick(cfg: &Config) -> Result<()> {
     // on every small change. `--quick` is everything that finishes in ~seconds:
     // the meta-gates + static floor, the spec checks (TLC + its anti-vacuity
     // mutation, ~2s — the spec must be checked as early as the code), the unit +
-    // property tests, coverage, Kani, and a short DST seed. The genuinely slow
-    // instruments (Miri, TSAN, mutants, fuzz, Loom, multi-seed DST) wait for
-    // `--full`.
+    // property tests, coverage, Kani, and a short DST seed. The expensive
+    // discovery / thoroughness instruments (TSAN, mutants, fuzz, Loom, multi-seed
+    // DST) wait for `--full`.
     regen(cfg, true)?;
     check_traceability(cfg)?;
     check_spec_sync(cfg)?;
@@ -302,17 +300,15 @@ fn verify_full(cfg: &Config) -> Result<()> {
     // running against host tools would be the silent-nondeterminism trap.
     docker::require_container("verify --full")?;
     println!("== verify --full ==");
-    // `--full` = the quick tier PLUS only the genuinely slow instruments, so it
-    // is run after big changes / before release rather than on every save. Miri
-    // (~15m, std reinterpretation) and TSAN (std rebuild) dominate the cost;
-    // mutants and fuzz scale with code×tests; Loom exhausts thread interleavings;
-    // multi-seed DST is the discovery sweep over the 1-seed regression already in
-    // `--quick`.
+    // `--full` = the quick tier PLUS the expensive thoroughness / discovery
+    // instruments, so it is run after big changes / before release rather than on
+    // every save. TSAN (std rebuild) dominates the cost; mutants scales with
+    // code×tests; Loom exhausts thread interleavings; fuzz + multi-seed DST are
+    // the discovery sweeps over the 1-seed regression already in `--quick`.
     verify_quick(cfg)?;
     outdated(cfg, true)?;
     geiger(cfg)?;
     mutants(cfg, None, None)?;
-    miri(cfg)?;
     tsan(cfg)?;
     loom_run(cfg)?;
     // DST: fixed seeds are the deterministic regression set; the trailing

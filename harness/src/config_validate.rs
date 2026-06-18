@@ -73,7 +73,6 @@ fn validate_crate_names(cfg: &Config) -> Result<()> {
         refs.push(("[coverage].core", c));
     }
     for (key, val) in [
-        ("[targets].miri", &cfg.raw.targets.miri),
         ("[targets].tsan", &cfg.raw.targets.tsan),
         ("[targets].loom", &cfg.raw.targets.loom),
     ] {

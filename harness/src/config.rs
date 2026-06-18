@@ -192,7 +192,6 @@ impl Default for Configs {
 #[derive(Debug, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct Targets {
-    pub(crate) miri: Option<String>,
     pub(crate) tsan: Option<String>,
     pub(crate) loom: Option<String>,
     pub(crate) dst: Option<TestTarget>,

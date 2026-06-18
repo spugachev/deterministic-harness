@@ -29,7 +29,6 @@ pub(crate) fn explain(cfg: &Config, gate: &str) -> Result<()> {
             );
         }
         "targets" => {
-            println!("miri  = {:?}", cfg.raw.targets.miri);
             println!("tsan  = {:?}", cfg.raw.targets.tsan);
             println!("loom  = {:?}", cfg.raw.targets.loom);
             println!("fuzz  = {:?}", cfg.raw.targets.fuzz);

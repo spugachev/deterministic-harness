@@ -1,8 +1,0 @@
-[extend]
-useDefault = true
-
-[allowlist]
-# spec/ holds illustrative TLA+/Gherkin, not secrets; target/ is build output
-# (a named volume in the container) — excluded so the dir-mode fallback scan
-# stays fast and false-positive-free.
-paths = ['''spec/.*''', '''target/.*''']

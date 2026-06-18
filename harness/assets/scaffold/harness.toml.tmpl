@@ -18,7 +18,6 @@ core = ["core"]
 # core-only, so the nightly/concurrency gates point at `core`. As you add a
 # concurrency adapter crate or an integration-test crate, repoint these (and add
 # `dst = { crate = "...", test = "..." }`, `fuzz = ["..."]`).
-miri = "core"
 tsan = "core"
 loom = "core"
 # pins live at .harness/pins/<name>.txt by convention (no [pins] table).

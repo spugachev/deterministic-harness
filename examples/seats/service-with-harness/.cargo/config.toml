@@ -1,3 +1,0 @@
-# Enforce zero-warning builds across the workspace.
-[build]
-rustflags = ["-D", "warnings"]

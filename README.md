@@ -36,7 +36,7 @@ mkdir ~/code/payments-svc && cd ~/code/payments-svc
 dhx init .
 dhx check           # cheap gates
 dhx verify --quick  # + tests, proptest, coverage, Kani, TLA+/TLC, 1 DST seed
-dhx verify --full   # + Miri, TSAN, mutants, fuzz, Loom, multi-seed DST
+dhx verify --full   # + TSAN, mutants, fuzz, Loom, multi-seed DST
 ```
 
 Without the cache volumes every run recompiles the whole dependency tree from
@@ -70,7 +70,7 @@ and only the slow ones wait (each `dhx <cmd>` is the `docker run … dhx:latest 
 | --------- | -------------------- | --------------------- | --------------------------------------------------------- |
 | Preflight | `dhx check`          | every save (~s)       | fmt, clippy, all meta-gates (incl. BDD coverage)          |
 | Quick     | `dhx verify --quick` | after a small change  | + tests, proptest, coverage, Kani, **TLA+/TLC**, 1 DST seed |
-| Full      | `dhx verify --full`  | after a big change    | + Miri, TSAN, mutants, fuzz, Loom, multi-seed DST         |
+| Full      | `dhx verify --full`  | after a big change    | + TSAN, mutants, fuzz, Loom, multi-seed DST               |
 
 `dhx config explain <gate>` shows any gate's resolved value and where it came
 from.
@@ -252,11 +252,10 @@ raw capability.
 
 **Memory safety & untrusted input**
 
-| Tool                                                                                                               | Tier    | Catches                                            | How it helps                                                              | ★     |
-| ------------------------------------------------------------------------------------------------------------------ | ------- | -------------------------------------------------- | ------------------------------------------------------------------------- | ----- |
-| [**Miri**](https://github.com/rust-lang/miri)                                                                      | full    | memory UB (invalid transmute, OOB, use-after-free) | interprets under a UB-detecting machine; insurance for any `unsafe`       | ★★☆☆☆ |
-| [**cargo-fuzz**](https://github.com/rust-fuzz/cargo-fuzz)                                                          | full    | panics/crashes on arbitrary raw input              | coverage-guided bytes into parsers/decoders; a crash persists as a replay | ★★★☆☆ |
-| [`#![forbid(unsafe_code)]`](https://doc.rust-lang.org/reference/attributes/codegen.html#the-unsafe_code-attribute) | compile | any `unsafe` in shipped crates                     | a compile error, stronger than any audit                                  | n/a   |
+| Tool                                                                                                               | Tier    | Catches                               | How it helps                                                              | ★     |
+| ------------------------------------------------------------------------------------------------------------------ | ------- | ------------------------------------- | ------------------------------------------------------------------------- | ----- |
+| [`#![forbid(unsafe_code)]`](https://doc.rust-lang.org/reference/attributes/codegen.html#the-unsafe_code-attribute) | compile | any `unsafe` in shipped crates        | a compile error — removes memory-UB as a class, stronger than any audit   | n/a   |
+| [**cargo-fuzz**](https://github.com/rust-fuzz/cargo-fuzz)                                                          | full    | panics/crashes on arbitrary raw input | coverage-guided bytes into parsers/decoders; a crash persists as a replay | ★★★☆☆ |
 
 **Supply chain & secrets — risks compilation can't see**
 
@@ -442,20 +441,24 @@ A non-atomic shared write _usually_ produces the right total on a quiet machine
 
 ### Memory safety & untrusted input
 
-**Miri** — interprets the program under a machine that detects UB.
+**`#![forbid(unsafe_code)]`** — memory UB (invalid transmute, OOB, use-after-free)
+can only arise through `unsafe`, so the scaffold forbids it outright in shipped
+crates. This removes the entire bug class at compile time:
 
 ```rust
 let p: Priority = unsafe { std::mem::transmute(7u8) };   // 7 is not a variant
 ```
 
 ```
-error: Undefined Behavior: constructing an invalid value:
-  encountered 0x07, but expected a valid enum tag
+error: usage of an `unsafe` block
+  = note: `#[forbid(unsafe_code)]` on by default
 ```
 
-Green under `cargo build` and the happy-path test; only a UB checker sees it.
-(`#![forbid(unsafe_code)]` keeps shipped crates out of this territory in the
-first place — a compile error if `unsafe` appears.)
+A compile error is stronger than any after-the-fact UB checker (e.g. Miri), and
+needs no extra gate or runtime. If a project genuinely needs `unsafe` (FFI, a
+custom data structure), lift the `forbid` only in that crate and add a Miri gate
+there — but the default, and the right answer for almost all domain code, is to
+keep the door shut.
 
 **cargo-fuzz** — coverage-guided mutated bytes into a parser; a crash is saved
 as a replay.

@@ -32,7 +32,7 @@ COPY harness/assets/scaffold/rust-toolchain.toml ./rust-toolchain.toml
 COPY harness/assets/scaffold/dot.harness/pins/ ./pins/
 RUN rustup show \
     && rustup toolchain install "$(cat pins/nightly.txt)" \
-         --component miri --component rust-src
+         --component rust-src
 
 FROM toolchain AS tools
 RUN cargo install --locked cargo-llvm-cov cargo-deny cargo-machete cargo-nextest \

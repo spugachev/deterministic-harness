@@ -117,8 +117,9 @@ development, not a pre-release afterthought:
   checks: TLA+/TLC model-checking + its anti-vacuity mutation** (the spec is
   verified as early as the code), plus deny/gitleaks/machete and one DST seed.
 - **`dhx verify --full` — after a big change / before release.** Adds only the
-  slow instruments: Miri (~15 min), TSAN, cargo-mutants, fuzz, Loom, and the
-  multi-seed DST sweep. Run it when you finish a feature, not on every save.
+  expensive thoroughness / discovery instruments: cargo-mutants, TSAN (rebuilds
+  std), Loom, fuzz, and the multi-seed DST sweep. Run it when you finish a
+  feature, not on every save.
 
 Every tier runs **inside the `dhx:latest` image** — there is no host `dhx`.
 Define this shell function once (it mounts cache volumes, so the second run

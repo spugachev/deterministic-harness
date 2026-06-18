@@ -76,7 +76,7 @@ pub(crate) fn run(path: &str, name: Option<&str>, force: bool) -> Result<()> {
            dhx:latest dhx \"$@\"; }}\n  \
          dhx check            # cheap gates, every save\n  \
          dhx verify --quick   # tests + proptest + Kani + TLA+ + DST\n  \
-         dhx verify --full    # + Miri, TSAN, mutants, fuzz, Loom",
+         dhx verify --full    # + TSAN, mutants, fuzz, Loom, multi-seed DST",
         target.display()
     );
     Ok(())

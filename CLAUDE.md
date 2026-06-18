@@ -73,8 +73,10 @@ scenario; a `(verified=…)` marker supplements a scenario, never replaces it.
 - `dhx verify --quick` — after small changes / each commit (~1-2 min): unit +
   proptest + coverage + Kani + **TLA+/TLC + its mutation** (spec checked as early
   as code) + deny/gitleaks/machete + 1 DST seed.
-- `dhx verify --full` — after big changes / before release: adds only the slow
-  instruments — Miri (~15 min), TSAN, mutants, fuzz, Loom, multi-seed DST.
+- `dhx verify --full` — after big changes / before release: adds only the
+  expensive instruments — TSAN, mutants, fuzz, Loom, multi-seed DST. (Memory UB
+  is handled at compile time by `#![forbid(unsafe_code)]`, so there is no Miri
+  gate; reintroduce one per-crate only if a crate lifts the `unsafe` ban.)
 
 This is encoded for the scaffolded project in
 `harness/assets/scaffold/CLAUDE.md.template` (and `verify_quick`/`verify_full` in

@@ -29,7 +29,7 @@ pub(crate) fn read_pin(path: impl AsRef<Path>) -> Result<String> {
 }
 
 /// The nightly toolchain spec pinned at `.harness/pins/nightly.txt`, e.g.
-/// `nightly-2026-05-17`. Used by the deterministic nightly gates (miri, tsan)
+/// `nightly-2026-05-17`. Used by the deterministic nightly gates (tsan, loom)
 /// so two machines on different days run the *same* nightly. Fuzz deliberately
 /// does NOT use this — it is a discovery gate on floating nightly.
 pub(crate) fn pinned_nightly(cfg: &Config) -> Result<String> {

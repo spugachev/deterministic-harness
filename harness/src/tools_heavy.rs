@@ -1,6 +1,6 @@
-//! Heavy / nightly / container-bound tool wrappers (fuzz, miri, tsan, loom,
-//! dst), split from `tools.rs` to keep each file within the ≤400 budget that
-//! dhx enforces on itself (G4).
+//! Heavy / nightly / container-bound tool wrappers (fuzz, tsan, loom, dst),
+//! split from `tools.rs` to keep each file within the ≤400 budget that dhx
+//! enforces on itself (G4).
 use crate::config::Config;
 use crate::toolchain::{host_triple, pinned_nightly};
 use crate::tools::at_root;
@@ -47,26 +47,6 @@ fn target_crate<'a>(role: &str, val: Option<&'a String>) -> Option<&'a str> {
     val.map(String::as_str)
 }
 
-pub(crate) fn miri(cfg: &Config) -> Result<()> {
-    // `-Zmiri-disable-isolation` lets proptest read the clock / cwd it needs;
-    // Miri checks the target crate for UB. Pinned nightly: Miri's UB model
-    // evolves, so a floating nightly would make this UB gate non-deterministic.
-    let Some(krate) = target_crate("miri", cfg.raw.targets.miri.as_ref()) else {
-        return Ok(());
-    };
-    let nightly = pinned_nightly(cfg)?;
-    let mut c = at_root(cfg, "cargo");
-    c.args([&format!("+{nightly}"), "miri", "test", "-p", krate]);
-    c.env("MIRIFLAGS", "-Zmiri-disable-isolation");
-    if !try_run(&format!("cargo +{nightly} miri test -p {krate}"), &mut c) {
-        return Err(anyhow!(
-            "Miri failed, or pinned nightly {nightly} / miri component missing \
-             (rustup toolchain install {nightly} --component miri rust-src)"
-        ));
-    }
-    Ok(())
-}
-
 pub(crate) fn tsan(cfg: &Config) -> Result<()> {
     // ThreadSanitizer needs the standard library recompiled with the same
     // `-Zsanitizer=thread` ABI, so we pass `-Zbuild-std` and an explicit
@@ -82,9 +62,15 @@ pub(crate) fn tsan(cfg: &Config) -> Result<()> {
     let nightly = pinned_nightly(cfg)?;
     let triple = host_triple();
     let mut c = at_root(cfg, "cargo");
+    // `--lib` restricts to the crate's UNIT tests. We deliberately exclude
+    // integration tests (`tests/*.rs`) — notably the BDD/cucumber harness, whose
+    // `harness = false` runner rejects libtest flags like `--test-threads` and
+    // spins up a multi-thread async runtime that is irrelevant to the data-race
+    // question and incompatible with the sanitizer's single-thread test mode.
     c.args([
         &format!("+{nightly}"),
         "test",
+        "--lib",
         "-Zbuild-std",
         &format!("--target={triple}"),
         "-p",
@@ -94,7 +80,7 @@ pub(crate) fn tsan(cfg: &Config) -> Result<()> {
     ]);
     c.env("RUSTFLAGS", "-Zsanitizer=thread");
     c.env("RUSTDOCFLAGS", "-Zsanitizer=thread");
-    if !try_run(&format!("cargo +{nightly} test (TSAN)"), &mut c) {
+    if !try_run(&format!("cargo +{nightly} test --lib (TSAN)"), &mut c) {
         return Err(anyhow!(
             "TSAN failed, or pinned nightly {nightly} / rust-src component missing"
         ));
@@ -106,13 +92,52 @@ pub(crate) fn loom_run(cfg: &Config) -> Result<()> {
     let Some(krate) = target_crate("loom", cfg.raw.targets.loom.as_ref()) else {
         return Ok(());
     };
+    // Presence ⇒ mandatory, else skip: only run when the target crate actually
+    // has Loom model tests (`loom::` in its source). `RUSTFLAGS=--cfg loom`
+    // propagates to the WHOLE dependency tree, and crates with their own internal
+    // `loom` cfg (notably tokio, pulled in as a dev-dependency by the BDD
+    // harness) fail to compile under a forced external `--cfg loom`. So a crate
+    // with no Loom tests must not trigger this gate at all — running it would
+    // only break the build for zero coverage.
+    if !crate_uses_loom(cfg, krate) {
+        println!(
+            "loom: [targets].loom = {krate:?} but it has no `loom::` model tests (skip — \
+             add loom tests behind `#[cfg(loom)]` to enable this gate)"
+        );
+        return Ok(());
+    }
     let mut c = at_root(cfg, "cargo");
-    c.args(["test", "-p", krate, "--release"]);
+    // `--lib` only: Loom models the shared-memory unit tests, not the BDD/async
+    // integration harness (which `--cfg loom` would not even link correctly).
+    c.args(["test", "--lib", "-p", krate, "--release"]);
     c.env("RUSTFLAGS", "--cfg loom");
-    if !try_run("cargo test --release (loom)", &mut c) {
+    if !try_run("cargo test --lib --release (loom)", &mut c) {
         return Err(anyhow!("loom failed"));
     }
     Ok(())
+}
+
+/// True if the named workspace crate's `src/` references `loom::` — i.e. it has
+/// Loom model tests that justify running the (dependency-tree-wide) `--cfg loom`
+/// build. Conservative: any mention counts.
+fn crate_uses_loom(cfg: &Config, krate: &str) -> bool {
+    let Ok(members) = cfg.workspace_members() else {
+        return false;
+    };
+    let Some(m) = members.iter().find(|m| m.name == krate) else {
+        return false;
+    };
+    let src = m.manifest_dir.join("src");
+    for entry in walkdir::WalkDir::new(&src).into_iter().flatten() {
+        if entry.path().extension().and_then(|e| e.to_str()) == Some("rs") {
+            if let Ok(text) = std::fs::read_to_string(entry.path()) {
+                if text.contains("loom::") {
+                    return true;
+                }
+            }
+        }
+    }
+    false
 }
 
 pub(crate) fn dst(cfg: &Config, seed: u64, iterations: u64) -> Result<()> {
