@@ -1,0 +1,23 @@
+[workspace]
+resolver = "2"
+members = ["crates/core", "crates/api"]
+
+[workspace.package]
+edition      = "2021"
+rust-version = "1.83"
+license      = "MIT OR Apache-2.0"
+
+# Strict-but-reasonable lints. The determinism *bans* (SystemTime::now, thread_rng,
+# …) live in clippy.toml as `disallowed_methods` — that is what makes the
+# concurrency/DST gates meaningful (see CLAUDE.md "architecture precondition").
+[workspace.lints.rust]
+warnings               = "deny"
+unsafe_op_in_unsafe_fn = "forbid"
+missing_docs           = "warn"
+# `kani` is a cfg set only by the Kani verifier; register it so clippy's
+# `unexpected_cfgs` lint does not fire on the `#[cfg(kani)]` proof modules.
+unexpected_cfgs        = { level = "warn", check-cfg = ['cfg(kani)'] }
+
+[workspace.lints.clippy]
+all      = { level = "deny", priority = -1 }
+pedantic = { level = "deny", priority = -1 }

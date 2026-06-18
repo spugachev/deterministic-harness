@@ -1,0 +1,31 @@
+{
+  "REQ-001": [
+    "When given a well-formed line \"TRANSFER <from> <to> <amount> <key>\" the service shall return a typed command with the parsed fields",
+    "When given malformed, empty, overlong, non-numeric, overflowing, or wrong-arity input the service shall return a typed error and shall never panic (verified=proptest)"
+  ],
+  "REQ-002": [
+    "When the source has sufficient funds and both accounts are open the service shall move the amount from source to destination",
+    "When the amount is zero, the source equals the destination, the source has insufficient funds, or either account is frozen or closed the service shall reject the transfer with a typed error and change no state",
+    "The source balance shall never become negative as a result of a transfer (verified=kani)"
+  ],
+  "REQ-003": [
+    "When a transfer is applied the sum of all account balances shall be unchanged (verified=kani)",
+    "When a transfer is rejected the sum of all account balances shall be unchanged (verified=proptest)"
+  ],
+  "REQ-004": [
+    "When a transfer with a new idempotency key is submitted the service shall apply it and record the key",
+    "When a transfer with an already-applied idempotency key is re-submitted the service shall return the original outcome and move no money (verified=proptest)"
+  ],
+  "REQ-005": [
+    "When an open account is frozen, unfrozen, or closed, or a frozen account is unfrozen or closed, the service shall apply the transition",
+    "When a transition is not legal from the current state, including any transition on a closed account, the service shall reject it and change no state (verified=tla)"
+  ],
+  "REQ-006": [
+    "While multiple transfers race on the same accounts the service shall never drive a balance negative and shall never double-spend",
+    "While multiple transfers race the sum of all balances shall remain invariant (verified=dst)"
+  ],
+  "REQ-007": [
+    "When an existing account is queried the service shall report its current balance and lifecycle state",
+    "When a non-existent account is queried the service shall report that it is unknown rather than fabricating a balance"
+  ]
+}

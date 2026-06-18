@@ -1,0 +1,36 @@
+# The one project-specific manifest dhx reads. Keys equal to dhx's built-in
+# defaults are omitted (so `dhx config explain` shows them as "(default)").
+# See: dhx config explain <gate>.
+
+[meta]
+schema_version = 1
+
+[project]
+name = "ledger"
+
+[coverage]
+# The verified-core crate(s) held to the high coverage bar; everything else in
+# the workspace is excluded from the report. REQUIRED.
+core = ["core"]
+
+[targets]
+# Concurrency/nightly gates run against the verified core.
+tsan = "core"
+loom = "core"
+# The DST drives interleaved transfers through the locked ledger in the outer
+# `api` crate: `cargo test -p api --test dst`.
+dst = { crate = "api", test = "dst" }
+# The untrusted single-line command parser is fuzzed (fuzz/fuzz_targets/).
+fuzz = ["parse_input"]
+# pins live at .harness/pins/<name>.txt by convention (no [pins] table).
+
+# The account lifecycle is a pure state machine; dhx generates the TLA+ spec
+# (spec/tla/Lifecycle.{tla,cfg}) from the Rust `fn next`. Edit the Rust, run
+# `dhx regen`, commit. Each TLA+ invariant needs an anti-vacuity entry in
+# spec/tla/mutations.toml.
+[fsm]
+source = "crates/core/src/domain/lifecycle.rs"
+fn_name = "next"
+state_enum = "State"
+event_enum = "Event"
+generated_stem = "Lifecycle"

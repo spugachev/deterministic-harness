@@ -1,0 +1,23 @@
+[package]
+name = "ledger-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+core = { path = "../crates/core" }
+
+[[bin]]
+name = "parse_input"
+path = "fuzz_targets/parse_input.rs"
+test = false
+doc = false
+bench = false
+
+# A fuzz crate is its own workspace so it isn't built by the main workspace's
+# normal commands (it needs the nightly fuzzer instrumentation).
+[workspace]

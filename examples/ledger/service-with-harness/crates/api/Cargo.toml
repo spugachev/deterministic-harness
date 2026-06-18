@@ -1,0 +1,28 @@
+[package]
+name         = "api"
+version      = "0.1.0"
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+# The service binary is never published to crates.io; marking it so lets it keep
+# its `path` dependency on `core` without tripping cargo-deny's wildcard-path ban
+# (which only exempts path deps in non-public crates).
+publish      = false
+
+# The OUTER IO crate: HTTP (axum) + the concurrency adapter (a lock around the
+# pure `core::domain::ledger::Ledger`). All non-determinism stays behind the
+# core's ports; this crate adds threads and sockets, never new domain rules.
+[dependencies]
+core   = { path = "../core" }
+axum   = "0.7"
+tokio  = { version = "1", features = ["rt-multi-thread", "macros", "net", "sync"] }
+serde  = { version = "1", features = ["derive"] }
+
+# The deterministic simulation test — `cargo test -p api --test dst`. A seed
+# fully determines the interleaving of concurrent transfers, so a failure
+# replays exactly.
+[[test]]
+name = "dst"
+
+[lints]
+workspace = true

@@ -1,0 +1,27 @@
+# Anti-vacuity mutations for the generated Lifecycle spec. Each [[mutations]]
+# entry deliberately breaks one invariant by patching the .tla text; TLC must
+# then report that invariant VIOLATED. If a mutation leaves the spec still
+# passing, the invariant was vacuous and `check-mutation-coverage` fails. This
+# proves the invariants have teeth.
+
+# TypeInvariant: state is always a legal value. Break it by sending the Open ->
+# Closed transition to a bogus state outside `States`; TLC must flag the type
+# violation.
+[[mutations]]
+spec = "Lifecycle"
+invariant = "TypeInvariant"
+label = "open-close-to-bogus-state"
+find = '''(state = "Open" /\ state' = "Closed")'''
+replace = '''(state = "Open" /\ state' = "Bogus")'''
+expect = "TypeInvariant"
+
+# ArchivedTerminal: a Closed account has no enabled action. Break it by adding a
+# transition OUT of Closed (Closed -> Open); a terminal state becomes live and
+# TLC must report ArchivedTerminal violated.
+[[mutations]]
+spec = "Lifecycle"
+invariant = "ArchivedTerminal"
+label = "resurrect-closed-account"
+find = '''(state = "Frozen" /\ state' = "Open")'''
+replace = '''(state = "Frozen" /\ state' = "Open") \/ (state = "Closed" /\ state' = "Open")'''
+expect = "ArchivedTerminal"
