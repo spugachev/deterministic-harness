@@ -164,13 +164,16 @@ pub(crate) fn kani(cfg: &Config) -> Result<()> {
     ) {
         return Err(anyhow!(
             "Kani not installed, a harness timed out, or proofs failed.\n  \
-             • A real counterexample: fix the code (Kani prints the failing trace).\n  \
+             • A real counterexample (Kani prints a failing trace): fix the code.\n  \
              • 'CBMC failed' / out-of-memory / unwinding / 'foreign function': a \
-             TRACTABILITY problem, not a bug — the proof is too big for the model \
-             checker. Do NOT prove over a symbolic Vec/HashMap/String or a loop that \
-             mutates one; model the state as a few scalars and prove the \
-             invariant-preserving STEP (see CLAUDE.md 'Kani proof'). Bound inputs \
-             with `kani::assume(x <= SMALL)` and loops with `#[kani::unwind(N)]`.\n  \
+             TRACTABILITY problem, not a bug — the formula is too big. Its size is \
+             the PRODUCT of symbolic dimensions, so shrink whichever is large: \
+             bound inputs (`kani::assume(x <= SMALL)`), bound loops \
+             (`#[kani::unwind(N)]`), keep any symbolic collection tiny (≤3-4, not \
+             symbolic-length), and don't multiply a collection by symbolic steps — \
+             collapse aggregate state to a scalar and prove the invariant-preserving \
+             step (see CLAUDE.md 'Kani proof'). Multi-step/collection behaviour \
+             belongs to proptest + DST.\n  \
              • Not installed: `cargo install kani-verifier && cargo kani setup`"
         ));
     }

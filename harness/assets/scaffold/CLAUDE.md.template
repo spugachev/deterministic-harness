@@ -107,47 +107,73 @@ Feature: Seat holds
 ```
 
 **Kani proof** (in the core, behind `#[cfg(kani)]`). Kani is a BOUNDED model
-checker (CBMC): it proves a property over every value of *scalar* symbolic
-inputs. It is NOT for whole-program or collection-level proofs.
+checker: it compiles your code + assertions to a SAT/SMT formula (CBMC) and
+proves the property holds for **every** value of the symbolic inputs within the
+bounds you set. Unlike proptest (samples) it is exhaustive — but only up to the
+bounds, and its cost grows with the *size of the formula*.
 
-> **CRITICAL — keep Kani tractable, or CBMC runs out of memory and the gate
-> fails (not a real counterexample, just OOM).** The #1 footgun is proving over a
-> **symbolic heap collection** (`Vec`/`HashMap`/`BTreeMap`) or looping symbolic
-> "steps" that mutate one — CBMC must model every allocation/branch and explodes.
+**The cost model (this is the whole game).** Formula size ≈ the **product** of
+every symbolic dimension: bits of symbolic input × loop-unwind depth × heap
+cells modelled × branches. A proof is tractable when that product is small and
+blows up (CBMC OOM / "running out of memory" / hours) when any one factor is
+large or unbounded. So the rules below are about keeping each factor small — not
+about banning any particular type.
 
-Do it the tractable way — **prove the invariant-preserving STEP on scalar
-state**, not a loop over a symbolic collection:
+**Default shape — prefer it; it is tractable by construction:** prove the
+*invariant-preserving step* of a pure function on a handful of **scalar**
+`kani::any()` inputs. Model aggregate state as a scalar (a count/sum), not as the
+container that holds it.
 
 ```rust
 #[cfg(kani)]
 mod proofs {
     use super::*;
-    // GOOD: a few scalar `kani::any()` inputs, pure arithmetic, no heap.
     #[kani::proof]
     fn hold_never_oversells() {
         let capacity: u32 = kani::any();
         let held: u32 = kani::any();
         let req: u32 = kani::any();
-        kani::assume(held <= capacity);                 // the invariant, as a precondition
+        kani::assume(held <= capacity);                 // invariant as precondition
         if let Some(new_held) = grant(capacity, held, req) {
-            assert!(new_held <= capacity);              // … preserved by the operation
+            assert!(new_held <= capacity);              // … preserved by the op
         }
     }
 }
 ```
 
-Rules that keep a proof from OOMing:
-- **No symbolic `Vec`/`HashMap`/`String`** in a proof. Model state as a few
-  scalars (counts, sums) and prove the per-operation transition preserves the
-  invariant. The full multi-step / collection behaviour is for **proptest + DST**,
-  not Kani.
-- Bound everything: `kani::assume(x <= SMALL)` on each input; add
-  `#[kani::unwind(N)]` with the smallest N that compiles if any loop remains.
-- If the domain inherently needs a collection, refactor the invariant into a
-  pure scalar function (e.g. `fn grant(capacity, held, req) -> Option<u32>`) and
-  prove THAT; keep the collection in the non-proof code path.
-- A Kani gate failure that mentions "CBMC failed / out of memory / unwinding /
-  foreign function" is a **tractability** problem, not a bug — shrink the proof.
+**Universal rules (in priority order):**
+
+1. **Bound every symbolic input.** `kani::assume(x <= SMALL)` (or use a narrow
+   type like `u8`). An unbounded `u64`/`usize` driving a length or loop is the
+   most common blow-up. Prove the general law on a small bound — the arithmetic
+   that holds for `capacity ≤ 8` is the same logic that holds for all `u32`.
+2. **Bound every loop.** Add `#[kani::unwind(N)]` with the smallest `N` that
+   compiles. No unbounded/`while`-on-symbolic loops in a proof.
+3. **Minimise the symbolic state, not the type.** A small fixed-size symbolic
+   `Vec`/array (≤ ~3–4 elements, bounded `unwind`) is fine. What blows up is a
+   **symbolic-length** collection, or a collection **multiplied by symbolic
+   steps** that mutate it (the formula is the product). If you find yourself
+   looping N symbolic operations over a `HashMap`/`BTreeMap`, that product is too
+   big — collapse it (rule 4).
+4. **Collapse state to a scalar when you can.** If the real invariant is
+   arithmetic ("sum of holds ≤ capacity"), refactor it into a pure scalar
+   function (`fn grant(capacity, held, req) -> Option<u32>`) and prove THAT. The
+   container→scalar correspondence (the map really sums to `held`) and the
+   multi-step / sequencing behaviour are covered by **proptest + DST**, which are
+   built for exactly that — so you lose no coverage, you route it to the right
+   tool.
+5. **One property per `#[kani::proof]`.** Several small focused harnesses verify
+   faster and fail more legibly than one that tries to prove everything.
+6. **A failure that says "CBMC failed / out of memory / unwinding assertion /
+   foreign function" is a TRACTABILITY problem, not a bug** — shrink bounds
+   (rules 1–4). A failure with a concrete counterexample trace IS a real bug —
+   fix the code. (`dhx`'s 300 s per-harness backstop turns a runaway into a named
+   failure instead of a hang.)
+
+**What Kani is NOT for** (use the routed tool instead): whole-program / async /
+IO behaviour (→ DST), multi-step sequences over real collections (→ proptest +
+DST), floating-point or unbounded ∀ (→ proptest). Kani's sweet spot is a small,
+pure, bounded function with an arithmetic/structural invariant.
 
 **Determinism ports** — domain code calls these, never `SystemTime::now` etc.:
 `Clock::now_unix() -> i64`, `Rng::next_u64() -> u64`, `IdGen::next_id() -> u64`.
