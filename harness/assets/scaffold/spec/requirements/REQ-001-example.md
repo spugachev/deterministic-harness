@@ -4,10 +4,11 @@ title: Grant clamps a request to the remaining budget
 status: active
 acceptance:
   - When the requested amount is at most the remaining budget the system shall grant the full request
-  - When the requested amount exceeds the remaining budget the system shall grant only the remaining amount
+  - When the requested amount exceeds the remaining budget the system shall grant only the remaining amount (verified=kani)
 implements_in:
   gherkin: [spec/features/example.feature]
   code: [crates/core/src/domain/example.rs::grant]
+  kani: [crates/core/src/domain/example.rs]
 ---
 
 ## Rationale

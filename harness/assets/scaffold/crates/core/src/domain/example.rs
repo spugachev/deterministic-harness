@@ -37,3 +37,24 @@ mod tests {
         }
     }
 }
+
+// Kani proves the same law EXHAUSTIVELY over every `u32` pair (not sampled like
+// proptest). This is the TRACTABLE shape to copy: scalar `kani::any()` inputs +
+// pure arithmetic, NO symbolic Vec/HashMap and no loops — so CBMC never runs out
+// of memory. To prove an invariant over stateful/collection logic, refactor the
+// rule into a scalar function like this and prove THAT (see CLAUDE.md "Kani
+// proof"); leave the collection to proptest + DST.
+#[cfg(kani)]
+mod proofs {
+    use super::grant;
+
+    #[kani::proof]
+    fn grant_respects_both_bounds() {
+        let requested: u32 = kani::any();
+        let remaining: u32 = kani::any();
+        let g = grant(requested, remaining);
+        assert!(g <= requested);
+        assert!(g <= remaining);
+        assert!(g == requested || g == remaining);
+    }
+}

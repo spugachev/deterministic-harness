@@ -163,9 +163,15 @@ pub(crate) fn kani(cfg: &Config) -> Result<()> {
         &mut c,
     ) {
         return Err(anyhow!(
-            "Kani not installed, a harness timed out, or proofs failed. A timeout names the \
-             harness — bound its loops with `#[kani::unwind(N)]` or reduce its symbolic input. \
-             Install: `cargo install kani-verifier && cargo kani setup`"
+            "Kani not installed, a harness timed out, or proofs failed.\n  \
+             • A real counterexample: fix the code (Kani prints the failing trace).\n  \
+             • 'CBMC failed' / out-of-memory / unwinding / 'foreign function': a \
+             TRACTABILITY problem, not a bug — the proof is too big for the model \
+             checker. Do NOT prove over a symbolic Vec/HashMap/String or a loop that \
+             mutates one; model the state as a few scalars and prove the \
+             invariant-preserving STEP (see CLAUDE.md 'Kani proof'). Bound inputs \
+             with `kani::assume(x <= SMALL)` and loops with `#[kani::unwind(N)]`.\n  \
+             • Not installed: `cargo install kani-verifier && cargo kani setup`"
         ));
     }
     Ok(())
