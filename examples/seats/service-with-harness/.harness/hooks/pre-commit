@@ -1,0 +1,3 @@
+#!/bin/sh
+# Cheap, fast gate before every commit. Never bypass with --no-verify.
+exec dhx check

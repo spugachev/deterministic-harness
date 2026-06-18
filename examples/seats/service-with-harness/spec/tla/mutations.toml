@@ -1,0 +1,31 @@
+# Anti-vacuity mutations for the generated Lifecycle spec.
+#
+# Each entry injects a known-breaking change into Lifecycle.tla and requires TLC
+# to report the named invariant as VIOLATED — proving the invariant actually
+# constrains the model (it is not vacuously true). `find` must match exactly once
+# in the .tla; `dhx tlc --mutate` and `check-mutation-coverage` enforce that
+# every declared invariant in Lifecycle.cfg has a covering mutation here.
+#
+# The find/replace strings contain TLA+ primed variables (state'), so they use
+# TOML triple-single-quoted literals (no escaping needed).
+
+# TypeInvariant (state \in States): retarget the Confirm transition to a state
+# value that is not in States. The reachable state then leaves the legal set, so
+# `state \in States` is violated.
+[[mutations]]
+spec = "Lifecycle"
+label = "confirm jumps to an illegal state"
+find = '''state = "Held" /\ state' = "Confirmed"'''
+replace = '''state = "Held" /\ state' = "Bogus"'''
+expect = "TypeInvariant"
+
+# ArchivedTerminal (terminal states have no enabled action): make the Release
+# action fire FROM the terminal Confirmed state. Held still reaches Confirmed via
+# Confirm, and from Confirmed the Release action is now ENABLED — so a terminal
+# state has an enabled action and ArchivedTerminal is violated.
+[[mutations]]
+spec = "Lifecycle"
+label = "released becomes reachable from a terminal state"
+find = '''state = "Held" /\ state' = "Released"'''
+replace = '''state = "Confirmed" /\ state' = "Released"'''
+expect = "ArchivedTerminal"

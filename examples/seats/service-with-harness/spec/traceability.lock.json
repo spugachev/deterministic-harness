@@ -1,0 +1,27 @@
+{
+  "REQ-001": [
+    "When a client requests N seats and at least N seats are available the system shall grant a hold with a unique id and a TTL",
+    "When a client requests N seats and fewer than N seats are available the system shall reject the request for insufficient availability",
+    "When a client requests zero seats the system shall reject the request"
+  ],
+  "REQ-002": [
+    "When a client confirms a live hold by id the system shall permanently book its seats",
+    "When a client confirms an expired, unknown, released, or already-confirmed hold the system shall reject the confirmation"
+  ],
+  "REQ-003": [
+    "When a client releases a live unconfirmed hold by id the system shall return its seats to available",
+    "When a client releases an expired or unknown hold the system shall treat it as a no-op without error"
+  ],
+  "REQ-004": [
+    "While a hold has not been confirmed within its TTL the system shall free its seats automatically based on the current time",
+    "When an operation observes that a hold has expired the system shall not count its seats as held or confirmed"
+  ],
+  "REQ-005": [
+    "While any sequence of hold, confirm, release, and expiry operations is applied the system shall keep confirmed plus currently-held seats at most the event capacity (verified=kani, proptest)",
+    "When two clients race for the last seats the system shall grant at most the available seats so no overbooking occurs (verified=kani, proptest)"
+  ],
+  "REQ-006": [
+    "When a client queries availability the system shall report capacity minus confirmed minus currently-held seats",
+    "While holds have expired the system shall count their seats as available again"
+  ]
+}

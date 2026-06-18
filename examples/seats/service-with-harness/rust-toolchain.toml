@@ -1,0 +1,10 @@
+# The STABLE channel pin (C3) — the single authority for the stable toolchain,
+# honored by rustup on every build and COPYd into the Docker image so the
+# container matches. The nightly pin (miri/tsan/fuzz) lives in
+# .harness/pins/nightly.txt.
+[toolchain]
+# Modern stable — the verification tools (cargo-deny/nextest/mutants/llvm-cov…)
+# require a recent rustc, so this pin must keep pace with them.
+channel = "1.95.0"
+components = ["rustfmt", "clippy", "llvm-tools-preview"]
+profile = "minimal"
