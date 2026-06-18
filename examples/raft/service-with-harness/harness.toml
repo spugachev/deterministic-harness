@@ -1,0 +1,36 @@
+# The one project-specific manifest dhx reads. Keys equal to dhx's built-in
+# defaults are omitted (so `dhx config explain` shows them as "(default)").
+# See: dhx config explain <gate>.
+
+[meta]
+schema_version = 1
+
+[project]
+name = "raftkv"
+
+[coverage]
+# The verified-core crate(s) held to the high coverage bar; everything else in
+# the workspace is excluded from the report. REQUIRED.
+core = ["core"]
+
+[targets]
+# Role assignments cargo metadata can't infer.
+tsan = "core"
+loom = "core"
+# The headline gate: a deterministic simulation of a 3-node cluster under a
+# network partition (`cargo test -p sim --test dst`).
+dst = { crate = "sim", test = "dst" }
+# The RESP parser is fuzzed for panic-freedom (target under fuzz/fuzz_targets/).
+fuzz = ["parse_resp"]
+# pins live at .harness/pins/<name>.txt by convention (no [pins] table).
+
+# The Raft node ROLE machine is a genuine FSM, so it is modelled as a pure
+# `fn next(Role, Event) -> Option<Role>` and `dhx regen` lifts it into TLA+
+# (spec/tla/Lifecycle.{tla,cfg}). Each generated invariant has an anti-vacuity
+# entry in spec/tla/mutations.toml.
+[fsm]
+source = "crates/core/src/domain/raft/role.rs"
+fn_name = "next"
+state_enum = "Role"
+event_enum = "Event"
+generated_stem = "Lifecycle"

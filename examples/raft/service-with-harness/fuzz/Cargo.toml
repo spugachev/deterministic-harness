@@ -1,0 +1,24 @@
+[package]
+name = "raftkv-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+core = { path = "../crates/core" }
+
+# The RESP parser is the only untrusted-input surface: fuzz it for panic-freedom.
+[[bin]]
+name = "parse_resp"
+path = "fuzz_targets/parse_resp.rs"
+test = false
+doc = false
+bench = false
+
+# A fuzz crate is not part of the workspace (it pins a nightly-only sanitizer
+# toolchain); exclude it so a normal `cargo build` ignores it.
+[workspace]

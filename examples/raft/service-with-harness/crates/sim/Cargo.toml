@@ -1,0 +1,29 @@
+[package]
+name         = "sim"
+version      = "0.1.0"
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+# Internal DST harness — never published, so its path dependency on `core` is a
+# private wildcard path dep (allowed by .harness/config/deny.toml).
+publish      = false
+
+# The DST harness: an in-process, deterministic simulation of a Raft cluster. It
+# is an OUTER crate (it drives the IO-free `core` over a simulated, partition-able
+# message bus with the Clock/Rng ports) — exactly where multi-step/network
+# behaviour belongs, not in the verified core.
+# Imported under an alias: the crate is literally named `core`, which would
+# shadow std's `core` in this crate's extern prelude and break proptest's macros
+# (they expand to `core::result::Result`). The alias keeps std's `core` reachable.
+[dependencies]
+raftcore = { package = "core", path = "../core" }
+
+[dev-dependencies]
+proptest = "1"
+
+# The headline gate `dhx verify` runs: `cargo test -p sim --test dst`.
+[[test]]
+name = "dst"
+
+[lints]
+workspace = true

@@ -1,0 +1,7 @@
+exclude_globs = ["**/main.rs"]
+# `#[cfg(kani)]` proof fns can't be killed by `cargo test` (they compile only
+# under Kani, which DOES prove them) — excluding them keeps mutants honest about
+# what the *test* suite covers rather than flagging an un-killable-by-design fn.
+exclude_re = ["proofs::"]
+timeout_multiplier = 5.0
+minimum_test_timeout = 60

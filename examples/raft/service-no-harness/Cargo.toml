@@ -1,0 +1,11 @@
+[package]
+name = "raft_kv"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+
+# Standalone crate: define an empty workspace here so this crate is its own
+# workspace root and is NOT absorbed into the repo-root workspace (which
+# deliberately excludes examples/).
+[workspace]

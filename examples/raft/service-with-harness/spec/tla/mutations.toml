@@ -1,0 +1,20 @@
+# Anti-vacuity mutations: each breaks one generated TLA+ invariant so TLC must
+# report a violation, proving the invariant actually constrains the model (it is
+# not vacuously true). `dhx tlc --mutate` applies each `find`→`replace` edit to
+# spec/tla/Lifecycle.tla and asserts `expect` is then violated.
+
+[[mutations]]
+spec = "Lifecycle"
+label = "type-invariant-anti-vacuity"
+expect = "TypeInvariant"
+find = "TypeInvariant == state \\in States"
+replace = "TypeInvariant == state = \"Bogus\""
+
+# `ArchivedTerminal` is the generated "terminal states have no enabled action"
+# invariant. The Raft role machine has NO terminal state (every role can move on
+# some event), so dhx emits it as `TRUE`. There is nothing to break, so it is
+# exempted with that reason rather than given a meaningless mutation.
+[[exempt]]
+spec = "Lifecycle"
+name = "ArchivedTerminal"
+reason = "generated as TRUE: the role FSM has no terminal state (Follower/Candidate/Leader each have an outgoing transition), so there is no reachable-terminal claim to break"

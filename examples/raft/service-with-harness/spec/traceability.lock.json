@@ -1,0 +1,39 @@
+{
+  "REQ-001": [
+    "When given a well-formed GET, SET, or DEL request the system shall return the corresponding typed command",
+    "When given malformed, truncated, wrong-arity, non-UTF-8, or overlong input the system shall return an error and shall never panic (verified=proptest)"
+  ],
+  "REQ-002": [
+    "When a committed SET is applied the system shall store the value at the key",
+    "When a committed GET is applied the system shall report the current value or report no value if absent",
+    "When a committed DEL is applied the system shall remove the key",
+    "Replaying the same committed command sequence shall always yield identical state (verified=proptest)"
+  ],
+  "REQ-003": [
+    "When a follower's election timeout elapses the system shall make it a candidate that increments its term and requests votes",
+    "When a candidate collects votes from a majority the system shall make it the leader",
+    "When votes split the system shall resolve the election via randomized timeouts (verified=dst)",
+    "A node shall grant at most one vote per term and only to a candidate whose log is at least as up-to-date (verified=kani)"
+  ],
+  "REQ-004": [
+    "When a client command reaches the leader the system shall append it to the leader log and replicate via AppendEntries",
+    "When an entry from the leader's current term is stored by a majority the system shall commit it",
+    "When an entry is committed the system shall apply it to the KV state machine in log order on every node",
+    "The commit index shall only advance and never regress (verified=kani)"
+  ],
+  "REQ-005": [
+    "The system shall maintain at most one leader per term (verified=kani)",
+    "The system shall keep logs identical up to any index where two logs share an entry index and term (verified=dst)",
+    "The system shall ensure no two nodes apply different commands at the same log index (verified=dst)",
+    "The system shall prevent a minority partition from committing any write (verified=dst)"
+  ],
+  "REQ-006": [
+    "All wall-clock time shall flow through the Clock port and all randomness through the Rng and IdGen ports",
+    "When run twice from the same seed the system shall produce the same outcome (verified=dst)"
+  ],
+  "REQ-007": [
+    "When a partition isolates a minority the system shall keep serving writes on the majority side",
+    "When a partition isolates a minority the system shall reject or hold writes on the minority side",
+    "When the partition heals the system shall let the minority catch up with no committed write lost or duplicated (verified=dst)"
+  ]
+}
