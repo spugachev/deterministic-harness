@@ -23,8 +23,13 @@ pub(crate) fn require_container(cmd: &str) -> Result<()> {
     }
     Err(anyhow!(
         "`dhx {cmd}` must run inside the dhx image so every tool matches the pins.\n\
-         Build it once, then run the command through it:\n  \
-         docker build -t dhx:latest .\n  \
-         docker run --rm -v \"$PWD\":/work -w /work dhx:latest dhx {cmd}"
+         Define this shell function once (it mounts cache volumes so the second run\n\
+         onward is fast — deps download once into a shared registry, target/ is a\n\
+         per-project volume), then call `dhx {cmd}`:\n\n  \
+         docker build -t dhx:latest .   # one time\n  \
+         dhx() {{ docker run --rm -v \"$PWD\":/work -w /work \\\n           \
+           -v dhx-cargo-registry:/root/.cargo/registry \\\n           \
+           -v \"dhx-target-$(basename \"$PWD\")\":/work/target \\\n           \
+           dhx:latest dhx \"$@\"; }}"
     ))
 }

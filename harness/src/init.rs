@@ -67,11 +67,16 @@ pub(crate) fn run(path: &str, name: Option<&str>, force: bool) -> Result<()> {
     crate::traceability::write_traceability(&cfg).ok();
 
     println!(
-        "\n✓ dhx init done. Next (all tiers run inside the dhx image):\n  \
+        "\n✓ dhx init done. Next — define the dhx shell function (cache volumes make \
+         re-runs fast), then run the tiers:\n  \
          cd {}\n  \
-         docker run --rm -v \"$PWD\":/work -w /work dhx:latest dhx check\n  \
-         docker run --rm -v \"$PWD\":/work -w /work dhx:latest dhx verify --quick\n  \
-         docker run --rm -v \"$PWD\":/work -w /work dhx:latest dhx verify --full",
+         dhx() {{ docker run --rm -v \"$PWD\":/work -w /work \\\n           \
+           -v dhx-cargo-registry:/root/.cargo/registry \\\n           \
+           -v \"dhx-target-$(basename \"$PWD\")\":/work/target \\\n           \
+           dhx:latest dhx \"$@\"; }}\n  \
+         dhx check            # cheap gates, every save\n  \
+         dhx verify --quick   # tests + proptest + Kani + TLA+ + DST\n  \
+         dhx verify --full    # + Miri, TSAN, mutants, fuzz, Loom",
         target.display()
     );
     Ok(())

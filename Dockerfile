@@ -59,4 +59,19 @@ FROM tools AS dhx
 # Build the dhx CLI from the in-repo crate (the build context is this repo root).
 COPY harness/ /opt/dhx-src/
 RUN cargo install --locked --path /opt/dhx-src
+
+# Pre-warm the scaffold's dependency set (item 3). We materialize the embedded
+# scaffold to a temp dir and compile its tests, which downloads + builds the
+# common deps (axum/tokio/cucumber/proptest/serde/…) into /root/.cargo/registry.
+# A FRESH `dhx-cargo-registry` named volume inherits the image's content at its
+# mount path, so the very first `dhx check`/`verify` in a new project starts with
+# those crates already downloaded — no cold registry fetch. (The per-project
+# `dhx-target-*` volume still starts empty, but compiling against pre-downloaded
+# deps is the bulk of the win.) The temp project is discarded; only the populated
+# cargo registry persists in the layer.
+RUN dhx init /tmp/prewarm --name prewarm >/dev/null 2>&1 \
+    && cd /tmp/prewarm \
+    && cargo fetch 2>/dev/null \
+    && DHX_IN_CONTAINER=1 cargo test --workspace --no-run 2>/dev/null \
+    ; rm -rf /tmp/prewarm; true
 WORKDIR /work

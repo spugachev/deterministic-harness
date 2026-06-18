@@ -23,18 +23,35 @@ pinned tool, so a gate can never run against an unpinned host version.
 git clone https://github.com/spugachev/deterministic-harness
 cd deterministic-harness && docker build -t dhx:latest .
 
-# 2. scaffold a new service — run dhx FROM the image, mounting the target dir
-mkdir ~/code/payments-svc && cd ~/code/payments-svc
-docker run --rm -v "$PWD":/work -w /work dhx:latest dhx init .
+# 2. define dhx as a shell function — it mounts CACHE VOLUMES so iteration is fast
+#    (the crate registry downloads once into a shared volume; target/ is a
+#    per-project volume, so the second run onward only recompiles what changed):
+dhx() { docker run --rm -v "$PWD":/work -w /work \
+          -v dhx-cargo-registry:/root/.cargo/registry \
+          -v "dhx-target-$(basename "$PWD")":/work/target \
+          dhx:latest dhx "$@"; }
 
-# 3. every tier runs the same way — in the image
-docker run --rm -v "$PWD":/work -w /work dhx:latest dhx check          # cheap gates
-docker run --rm -v "$PWD":/work -w /work dhx:latest dhx verify --quick  # + tests, cov, Kani, DST
-docker run --rm -v "$PWD":/work -w /work dhx:latest dhx verify --full   # + TLA+, Miri, TSAN, Loom, fuzz, mutants
+# 3. scaffold a new service, then run every tier as if dhx were local
+mkdir ~/code/payments-svc && cd ~/code/payments-svc
+dhx init .
+dhx check           # cheap gates
+dhx verify --quick  # + tests, proptest, coverage, Kani, TLA+/TLC, 1 DST seed
+dhx verify --full   # + Miri, TSAN, mutants, fuzz, Loom, multi-seed DST
 ```
 
-(A one-line shell alias — `dhx() { docker run --rm -v "$PWD":/work -w /work
-dhx:latest dhx "$@"; }` — makes this read like a local `dhx …` command.)
+Without the cache volumes every run recompiles the whole dependency tree from
+scratch. Measured on a fresh scaffold (seats example, Apple Silicon):
+
+| run | `verify --quick` | `check` |
+| --- | --- | --- |
+| cold, no volumes (worst case) | ~164 s | — |
+| first run, cache volumes (registry pre-warmed in the image) | ~72 s | — |
+| **warm re-run** (hot `target/` volume) | **~30 s** | **~1 s** |
+
+The volumes are the difference between "verify continuously" and "verify
+occasionally," so the function above is the recommended way to invoke dhx. (Put
+it in your shell rc; `dhx-cargo-registry` is
+safe to share across all projects, the per-project `dhx-target-*` is not.)
 
 `dhx init` writes a workspace with an IO-free core, the Clock/Rng/IdGen ports, a
 mandatory BDD+EARS scenario per requirement, `spec/` (requirements, ADRs, and
